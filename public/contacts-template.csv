@@ -1,0 +1,3 @@
+name,email,phone,budget,status,city,investorType,locationPreference,notes
+John Doe,john.doe@example.com,9876543210,3-6,Warm,Mumbai,Investment,Bandra,"Looking for a 2BHK with sea view"
+Jane Smith,jane.smith@example.com,8765432109,<1,Cold,Delhi,Self Use,,"First time home buyer"

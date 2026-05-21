@@ -1,0 +1,7 @@
+{
+  "name": "RealConnect INDAH CRM",
+  "description": "Premium real estate contact management and intelligent property match CRM with Gemini AI assistant",
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

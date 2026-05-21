@@ -1,0 +1,96 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 2%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 2%;
+    --popover: 0 0% 98%;
+    --popover-foreground: 0 0% 2%;
+    --primary: 179 49% 26%;
+    --primary-foreground: 179 49% 96%;
+    --secondary: 179 10% 85%;
+    --secondary-foreground: 179 49% 10%;
+    --muted: 179 10% 90%;
+    --muted-foreground: 0 0% 35%;
+    --accent: 38 56% 61%;
+    --accent-foreground: 38 56% 11%;
+    --destructive: 11 48% 50%;
+    --destructive-foreground: 11 48% 98%;
+    --border: 179 15% 80%;
+    --input: 179 15% 80%;
+    --ring: 179 49% 26%;
+    --radius: 0.5rem;
+
+    --hot: 0 72% 51%;
+    --hot-foreground: 0 0% 100%;
+    --warm: 45 93% 47%;
+    --warm-foreground: 45 100% 20%;
+    --cold: 210 100% 96.1%;
+    --cold-foreground: 207 98% 50%;
+  }
+
+  .dark {
+    --background: 0 0% 2%;
+    --foreground: 38 88% 96%;
+    --card: 0 0% 2%;
+    --card-foreground: 38 88% 96%;
+    --popover: 0 0% 2%;
+    --popover-foreground: 38 88% 96%;
+    --primary: 179 49% 36%;
+    --primary-foreground: 179 49% 96%;
+    --secondary: 179 49% 12%;
+    --secondary-foreground: 38 88% 96%;
+    --muted: 179 49% 12%;
+    --muted-foreground: 179 10% 60%;
+    --accent: 38 56% 61%;
+    --accent-foreground: 38 56% 11%;
+    --destructive: 11 48% 50%;
+    --destructive-foreground: 11 48% 98%;
+    --border: 179 49% 12%;
+    --input: 179 49% 12%;
+    --ring: 179 49% 36%;
+
+    --hot: 0 63% 51%;
+    --hot-foreground: 0 0% 100%;
+    --warm: 45 93% 47%;
+    --warm-foreground: 45 100% 20%;
+    --cold: 222.2 84% 4.9%;
+    --cold-foreground: 207 98% 58%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .print-hidden {
+    display: none !important;
+  }
+  .print-h-auto {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .print-bg-white {
+    background-color: white !important;
+  }
+  @page {
+    size: A4 landscape;
+    margin: 1cm;
+  }
+}
