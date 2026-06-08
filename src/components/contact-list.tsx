@@ -57,6 +57,12 @@ import { cn } from '@/lib/utils';
 
 type SortKey = keyof Pick<Contact, 'serialNumber' | 'name' | 'status' | 'budget' | 'city' | 'locationPreference' | 'createdAt' | 'updatedAt' | 'propertyPreference' | 'contactType' | 'referenceContact' | 'isActive'>;
 
+const budgetOrder: Record<Contact['budget'], number> = {
+  "<1": 1, "1-3": 2, "3-6": 3, "6-10": 4, ">10": 5
+};
+
+const statusOrder: Record<Contact['status'], number> = { "Cold": 1, "Warm": 2, "Hot": 3 };
+
 export function ContactList({ initialContacts, allListings }: { initialContacts: Contact[], allListings: Listing[] }) {
   const [sortKey, setSortKey] = React.useState<SortKey>('serialNumber');
   const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('asc');
@@ -113,12 +119,6 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
     });
   };
 
-  const budgetOrder: Record<Contact['budget'], number> = {
-    "<1": 1, "1-3": 2, "3-6": 3, "6-10": 4, ">10": 5
-  };
-
-  const statusOrder: Record<Contact['status'], number> = { "Cold": 1, "Warm": 2, "Hot": 3 };
-
   const sortedContacts = React.useMemo(() => {
     return [...initialContacts].filter(contact => {
       const query = searchQuery.toLowerCase();
@@ -153,7 +153,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
       if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [initialContacts, sortKey, sortOrder, budgetOrder, statusOrder, searchQuery]);
+  }, [initialContacts, sortKey, sortOrder, searchQuery]);
   
   const getSortIcon = (key: SortKey) => {
     if (sortKey !== key) return <ArrowUpDown className="ml-2 h-4 w-4 opacity-30" />;
