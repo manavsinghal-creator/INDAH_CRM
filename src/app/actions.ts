@@ -23,6 +23,7 @@ import {
     updateDemoContact,
     updateDemoListing,
 } from '@/lib/demo-data';
+import { requireAuthorizedUser } from '@/lib/auth-server';
 
 const contactsCollection = collection(db, 'contacts');
 const listingsCollection = collection(db, 'listings');
@@ -30,6 +31,7 @@ const channelPartnersCollection = collection(db, 'channelPartners');
 
 // CONTACT ACTIONS
 export async function getContacts(): Promise<Contact[]> {
+    await requireAuthorizedUser();
     noStore();
     if (!isFirebaseConfigured) return demoContacts;
     try {
@@ -62,6 +64,7 @@ async function getNextSerialNumber(prefix: string, coll: any): Promise<string> {
 }
 
 export async function addContact(formData: z.infer<typeof ContactFormSchema>): Promise<{ success: boolean; contact?: Contact; error?: any }> {
+    await requireAuthorizedUser();
     const result = ContactFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
     if (!isFirebaseConfigured) {
@@ -90,6 +93,7 @@ export async function addContact(formData: z.infer<typeof ContactFormSchema>): P
 }
 
 export async function updateContact(id: string, formData: z.infer<typeof ContactFormSchema>): Promise<{ success: boolean; contact?: Contact; error?: any }> {
+    await requireAuthorizedUser();
     const result = ContactFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
     if (!isFirebaseConfigured) {
@@ -113,6 +117,7 @@ export async function updateContact(id: string, formData: z.infer<typeof Contact
 }
 
 export async function deleteContact(id: string): Promise<{ success: boolean; error?: string }> {
+    await requireAuthorizedUser();
     if (!isFirebaseConfigured) {
         const deleted = deleteDemoContact(id);
         if (!deleted) return { success: false, error: 'Demo contact not found.' };
@@ -130,6 +135,7 @@ export async function deleteContact(id: string): Promise<{ success: boolean; err
 
 // LISTING ACTIONS
 export async function getListings(): Promise<Listing[]> {
+    await requireAuthorizedUser();
     noStore();
     if (!isFirebaseConfigured) return demoListings;
     try {
@@ -150,6 +156,7 @@ export async function getListings(): Promise<Listing[]> {
 }
 
 export async function getListingById(id: string): Promise<Listing | null> {
+    await requireAuthorizedUser();
     if (!isFirebaseConfigured) return demoListings.find((listing) => listing.id === id) || null;
     const docRef = doc(db, 'listings', id);
     const docSnap = await getDoc(docRef);
@@ -159,6 +166,7 @@ export async function getListingById(id: string): Promise<Listing | null> {
 }
 
 export async function addListing(formData: z.infer<typeof ListingFormSchema>): Promise<{ success: boolean; listing?: Listing; error?: any }> {
+    await requireAuthorizedUser();
     const result = ListingFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
     if (!isFirebaseConfigured) {
@@ -180,6 +188,7 @@ export async function addListing(formData: z.infer<typeof ListingFormSchema>): P
 }
 
 export async function updateListing(id: string, formData: z.infer<typeof ListingFormSchema>): Promise<{ success: boolean; listing?: Listing; error?: any }> {
+    await requireAuthorizedUser();
     const result = ListingFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
     if (!isFirebaseConfigured) {
@@ -203,6 +212,7 @@ export async function updateListing(id: string, formData: z.infer<typeof Listing
 }
 
 export async function deleteListing(id: string): Promise<{ success: boolean; error?: string }> {
+    await requireAuthorizedUser();
     if (!isFirebaseConfigured) {
         const deleted = deleteDemoListing(id);
         if (!deleted) return { success: false, error: 'Demo listing not found.' };
@@ -220,6 +230,7 @@ export async function deleteListing(id: string): Promise<{ success: boolean; err
 
 // CHANNEL PARTNER ACTIONS
 export async function getChannelPartners(): Promise<ChannelPartner[]> {
+    await requireAuthorizedUser();
     noStore();
     if (!isFirebaseConfigured) return demoChannelPartners;
     try {
@@ -235,6 +246,7 @@ export async function getChannelPartners(): Promise<ChannelPartner[]> {
 }
 
 export async function addChannelPartner(formData: z.infer<typeof ChannelPartnerFormSchema>): Promise<{ success: boolean; partner?: ChannelPartner; error?: any }> {
+    await requireAuthorizedUser();
     const result = ChannelPartnerFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
     if (!isFirebaseConfigured) {
@@ -263,6 +275,7 @@ export async function addChannelPartner(formData: z.infer<typeof ChannelPartnerF
 }
 
 export async function updateChannelPartner(id: string, formData: z.infer<typeof ChannelPartnerFormSchema>): Promise<{ success: boolean; partner?: ChannelPartner; error?: any }> {
+    await requireAuthorizedUser();
     const result = ChannelPartnerFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
     if (!isFirebaseConfigured) {
@@ -286,6 +299,7 @@ export async function updateChannelPartner(id: string, formData: z.infer<typeof 
 }
 
 export async function deleteChannelPartner(id: string): Promise<{ success: boolean; error?: string }> {
+    await requireAuthorizedUser();
     if (!isFirebaseConfigured) {
         const deleted = deleteDemoChannelPartner(id);
         if (!deleted) return { success: false, error: 'Demo channel partner not found.' };
@@ -302,6 +316,7 @@ export async function deleteChannelPartner(id: string): Promise<{ success: boole
 }
 
 export async function bulkAddContacts(contacts: any[]): Promise<{ success: boolean; count?: number; error?: string }> {
+    await requireAuthorizedUser();
     try {
         let count = 0;
         for (const c of contacts) {
@@ -322,6 +337,7 @@ export async function bulkAddContacts(contacts: any[]): Promise<{ success: boole
 }
 
 export async function getDashboardMetrics() {
+    await requireAuthorizedUser();
     noStore();
     const contacts = await getContacts();
     const listings = await getListings();

@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { AppShell } from '@/components/app-shell';
 import { cn } from '@/lib/utils';
+import { getCurrentUser } from '@/lib/auth-server';
 
 export const metadata: Metadata = {
   title: 'INDAH LIVING CRM v8',
@@ -15,7 +16,7 @@ const inter = Inter({
   variable: '--font-inter',
 });
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
@@ -23,7 +24,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full">
       <body className={cn('min-h-screen bg-background font-body antialiased flex flex-col', inter.variable)}>
-        <AppShell>{children}</AppShell>
+        <AppShell user={await getCurrentUser()}>{children}</AppShell>
       </body>
     </html>
   );
