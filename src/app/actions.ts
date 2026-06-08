@@ -4,7 +4,7 @@
 import { revalidatePath } from 'next/cache';
 import { unstable_noStore as noStore } from 'next/cache';
 import { z } from 'zod';
-import { db, isFirebaseConfigured } from '@/lib/firebase';
+import { db, isCrmDatabaseConfigured } from '@/lib/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, serverTimestamp, getDoc } from 'firebase/firestore';
 
 import { Contact, ContactFormSchema, Listing, ListingFormSchema, ChannelPartner, ChannelPartnerFormSchema, GenerateDescriptionInputSchema, QuickPropertyMatcherInputSchema } from '@/lib/types';
@@ -33,7 +33,7 @@ const channelPartnersCollection = collection(db, 'channelPartners');
 export async function getContacts(): Promise<Contact[]> {
     await requireAuthorizedUser();
     noStore();
-    if (!isFirebaseConfigured) return demoContacts;
+    if (!isCrmDatabaseConfigured) return demoContacts;
     try {
         const q = query(contactsCollection, orderBy('createdAt', 'desc'));
         const querySnapshot = await getDocs(q);
@@ -67,7 +67,7 @@ export async function addContact(formData: z.infer<typeof ContactFormSchema>): P
     await requireAuthorizedUser();
     const result = ContactFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
-    if (!isFirebaseConfigured) {
+    if (!isCrmDatabaseConfigured) {
         const contact = addDemoContact(result.data);
         revalidatePath('/');
         return { success: true, contact };
@@ -96,7 +96,7 @@ export async function updateContact(id: string, formData: z.infer<typeof Contact
     await requireAuthorizedUser();
     const result = ContactFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
-    if (!isFirebaseConfigured) {
+    if (!isCrmDatabaseConfigured) {
         const contact = updateDemoContact(id, result.data);
         if (!contact) return { success: false, error: { _form: ['Demo contact not found.'] } };
         revalidatePath('/');
@@ -118,7 +118,7 @@ export async function updateContact(id: string, formData: z.infer<typeof Contact
 
 export async function deleteContact(id: string): Promise<{ success: boolean; error?: string }> {
     await requireAuthorizedUser();
-    if (!isFirebaseConfigured) {
+    if (!isCrmDatabaseConfigured) {
         const deleted = deleteDemoContact(id);
         if (!deleted) return { success: false, error: 'Demo contact not found.' };
         revalidatePath('/');
@@ -137,7 +137,7 @@ export async function deleteContact(id: string): Promise<{ success: boolean; err
 export async function getListings(): Promise<Listing[]> {
     await requireAuthorizedUser();
     noStore();
-    if (!isFirebaseConfigured) return demoListings;
+    if (!isCrmDatabaseConfigured) return demoListings;
     try {
         const q = query(listingsCollection, orderBy('createdAt', 'desc'));
         const querySnapshot = await getDocs(q);
@@ -157,7 +157,7 @@ export async function getListings(): Promise<Listing[]> {
 
 export async function getListingById(id: string): Promise<Listing | null> {
     await requireAuthorizedUser();
-    if (!isFirebaseConfigured) return demoListings.find((listing) => listing.id === id) || null;
+    if (!isCrmDatabaseConfigured) return demoListings.find((listing) => listing.id === id) || null;
     const docRef = doc(db, 'listings', id);
     const docSnap = await getDoc(docRef);
     if (!docSnap.exists()) return null;
@@ -169,7 +169,7 @@ export async function addListing(formData: z.infer<typeof ListingFormSchema>): P
     await requireAuthorizedUser();
     const result = ListingFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
-    if (!isFirebaseConfigured) {
+    if (!isCrmDatabaseConfigured) {
         const listing = addDemoListing(result.data);
         revalidatePath('/listings');
         return { success: true, listing };
@@ -191,7 +191,7 @@ export async function updateListing(id: string, formData: z.infer<typeof Listing
     await requireAuthorizedUser();
     const result = ListingFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
-    if (!isFirebaseConfigured) {
+    if (!isCrmDatabaseConfigured) {
         const listing = updateDemoListing(id, result.data);
         if (!listing) return { success: false, error: { _form: ['Demo listing not found.'] } };
         revalidatePath('/listings');
@@ -213,7 +213,7 @@ export async function updateListing(id: string, formData: z.infer<typeof Listing
 
 export async function deleteListing(id: string): Promise<{ success: boolean; error?: string }> {
     await requireAuthorizedUser();
-    if (!isFirebaseConfigured) {
+    if (!isCrmDatabaseConfigured) {
         const deleted = deleteDemoListing(id);
         if (!deleted) return { success: false, error: 'Demo listing not found.' };
         revalidatePath('/listings');
@@ -232,7 +232,7 @@ export async function deleteListing(id: string): Promise<{ success: boolean; err
 export async function getChannelPartners(): Promise<ChannelPartner[]> {
     await requireAuthorizedUser();
     noStore();
-    if (!isFirebaseConfigured) return demoChannelPartners;
+    if (!isCrmDatabaseConfigured) return demoChannelPartners;
     try {
         const q = query(channelPartnersCollection, orderBy('createdAt', 'desc'));
         const querySnapshot = await getDocs(q);
@@ -249,7 +249,7 @@ export async function addChannelPartner(formData: z.infer<typeof ChannelPartnerF
     await requireAuthorizedUser();
     const result = ChannelPartnerFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
-    if (!isFirebaseConfigured) {
+    if (!isCrmDatabaseConfigured) {
         const partner = addDemoChannelPartner(result.data);
         revalidatePath('/channel-partners');
         return { success: true, partner };
@@ -278,7 +278,7 @@ export async function updateChannelPartner(id: string, formData: z.infer<typeof 
     await requireAuthorizedUser();
     const result = ChannelPartnerFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
-    if (!isFirebaseConfigured) {
+    if (!isCrmDatabaseConfigured) {
         const partner = updateDemoChannelPartner(id, result.data);
         if (!partner) return { success: false, error: { _form: ['Demo channel partner not found.'] } };
         revalidatePath('/channel-partners');
@@ -300,7 +300,7 @@ export async function updateChannelPartner(id: string, formData: z.infer<typeof 
 
 export async function deleteChannelPartner(id: string): Promise<{ success: boolean; error?: string }> {
     await requireAuthorizedUser();
-    if (!isFirebaseConfigured) {
+    if (!isCrmDatabaseConfigured) {
         const deleted = deleteDemoChannelPartner(id);
         if (!deleted) return { success: false, error: 'Demo channel partner not found.' };
         revalidatePath('/channel-partners');
