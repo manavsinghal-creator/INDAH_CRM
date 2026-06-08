@@ -11,7 +11,7 @@ export default async function CollaboratorsPage() {
         <CardHeader>
           <CardTitle>Approved collaborators</CardTitle>
           <CardDescription>
-            Only the Google accounts listed here can access the CRM.
+            Only users created in Firebase Authentication and listed here can access the CRM.
           </CardDescription>
         </CardHeader>
         <CardContent>

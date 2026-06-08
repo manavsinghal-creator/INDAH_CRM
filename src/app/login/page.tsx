@@ -13,7 +13,7 @@ export default async function LoginPage() {
         <CardHeader>
           <CardTitle>Sign in to RealConnect</CardTitle>
           <CardDescription>
-            Use an approved Google account to access the INDAH CRM.
+            Use your approved CRM email address and password.
           </CardDescription>
         </CardHeader>
         <CardContent>
