@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { contactMatcher } from '@/ai/flows/contact-matcher';
+import { requireAuthorizedUser } from '@/lib/auth-server';
 
 export async function POST(req: NextRequest) {
   try {
+    await requireAuthorizedUser();
     const body = await req.json();
     const data = await contactMatcher(body);
     return NextResponse.json({ success: true, data });

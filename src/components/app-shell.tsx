@@ -7,6 +7,8 @@ import { Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Toaster } from '@/components/ui/toaster';
+import { UserMenu } from '@/components/user-menu';
+import type { SessionUser } from '@/lib/auth-server';
 
 const navItems = [
   { href: '/', label: 'Contacts' },
@@ -62,7 +64,7 @@ function Footer() {
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, user }: { children: React.ReactNode; user: SessionUser | null }) {
   const [isMenuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -72,14 +74,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6">
             <div className="flex items-center gap-6">
               <Brand />
-              <nav className="hidden md:flex items-center gap-4">
+              {user && <nav className="hidden md:flex items-center gap-4">
                 {navItems.map((item) => (
                   <Button key={item.href} variant="link" asChild>
                     <Link href={item.href}>{item.label}</Link>
                   </Button>
                 ))}
-              </nav>
+              </nav>}
             </div>
+            {user && <div className="flex items-center gap-2">
             <div className="md:hidden">
               <Sheet open={isMenuOpen} onOpenChange={setMenuOpen}>
                 <SheetTrigger asChild>
@@ -111,11 +114,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </SheetContent>
               </Sheet>
             </div>
+            <UserMenu user={user} />
+            </div>}
           </div>
         </header>
         {children}
       </div>
-      <Footer />
+      {user && <Footer />}
       <Toaster />
     </>
   );
