@@ -4,11 +4,25 @@
 import { revalidatePath } from 'next/cache';
 import { unstable_noStore as noStore } from 'next/cache';
 import { z } from 'zod';
-import { db } from '@/lib/firebase';
+import { db, isFirebaseConfigured } from '@/lib/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, serverTimestamp, getDoc } from 'firebase/firestore';
 
 import { Contact, ContactFormSchema, Listing, ListingFormSchema, ChannelPartner, ChannelPartnerFormSchema, GenerateDescriptionInputSchema, QuickPropertyMatcherInputSchema } from '@/lib/types';
 import { QuickPropertyMatcherOutput } from '@/lib/types';
+import {
+    addDemoChannelPartner,
+    addDemoContact,
+    addDemoListing,
+    deleteDemoChannelPartner,
+    deleteDemoContact,
+    deleteDemoListing,
+    demoChannelPartners,
+    demoContacts,
+    demoListings,
+    updateDemoChannelPartner,
+    updateDemoContact,
+    updateDemoListing,
+} from '@/lib/demo-data';
 
 const contactsCollection = collection(db, 'contacts');
 const listingsCollection = collection(db, 'listings');
@@ -17,17 +31,22 @@ const channelPartnersCollection = collection(db, 'channelPartners');
 // CONTACT ACTIONS
 export async function getContacts(): Promise<Contact[]> {
     noStore();
-    const q = query(contactsCollection, orderBy('createdAt', 'desc'));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
-            updatedAt: data.updatedAt?.toDate().toISOString() || new Date().toISOString(),
-        } as Contact;
-    });
+    if (!isFirebaseConfigured) return demoContacts;
+    try {
+        const q = query(contactsCollection, orderBy('createdAt', 'desc'));
+        const querySnapshot = await getDocs(q);
+        return querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                ...data,
+                createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
+                updatedAt: data.updatedAt?.toDate().toISOString() || new Date().toISOString(),
+            } as Contact;
+        });
+    } catch (error) {
+        return demoContacts;
+    }
 }
 
 async function getNextSerialNumber(prefix: string, coll: any): Promise<string> {
@@ -45,6 +64,11 @@ async function getNextSerialNumber(prefix: string, coll: any): Promise<string> {
 export async function addContact(formData: z.infer<typeof ContactFormSchema>): Promise<{ success: boolean; contact?: Contact; error?: any }> {
     const result = ContactFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
+    if (!isFirebaseConfigured) {
+        const contact = addDemoContact(result.data);
+        revalidatePath('/');
+        return { success: true, contact };
+    }
 
     try {
         const serialNumber = await getNextSerialNumber('N', contactsCollection);
@@ -68,6 +92,12 @@ export async function addContact(formData: z.infer<typeof ContactFormSchema>): P
 export async function updateContact(id: string, formData: z.infer<typeof ContactFormSchema>): Promise<{ success: boolean; contact?: Contact; error?: any }> {
     const result = ContactFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
+    if (!isFirebaseConfigured) {
+        const contact = updateDemoContact(id, result.data);
+        if (!contact) return { success: false, error: { _form: ['Demo contact not found.'] } };
+        revalidatePath('/');
+        return { success: true, contact };
+    }
 
     try {
         const contactRef = doc(db, 'contacts', id);
@@ -83,6 +113,12 @@ export async function updateContact(id: string, formData: z.infer<typeof Contact
 }
 
 export async function deleteContact(id: string): Promise<{ success: boolean; error?: string }> {
+    if (!isFirebaseConfigured) {
+        const deleted = deleteDemoContact(id);
+        if (!deleted) return { success: false, error: 'Demo contact not found.' };
+        revalidatePath('/');
+        return { success: true };
+    }
     try {
         await deleteDoc(doc(db, 'contacts', id));
         revalidatePath('/');
@@ -95,20 +131,26 @@ export async function deleteContact(id: string): Promise<{ success: boolean; err
 // LISTING ACTIONS
 export async function getListings(): Promise<Listing[]> {
     noStore();
-    const q = query(listingsCollection, orderBy('createdAt', 'desc'));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
-            updatedAt: data.updatedAt?.toDate().toISOString() || new Date().toISOString(),
-        } as Listing;
-    });
+    if (!isFirebaseConfigured) return demoListings;
+    try {
+        const q = query(listingsCollection, orderBy('createdAt', 'desc'));
+        const querySnapshot = await getDocs(q);
+        return querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                ...data,
+                createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
+                updatedAt: data.updatedAt?.toDate().toISOString() || new Date().toISOString(),
+            } as Listing;
+        });
+    } catch (error) {
+        return demoListings;
+    }
 }
 
 export async function getListingById(id: string): Promise<Listing | null> {
+    if (!isFirebaseConfigured) return demoListings.find((listing) => listing.id === id) || null;
     const docRef = doc(db, 'listings', id);
     const docSnap = await getDoc(docRef);
     if (!docSnap.exists()) return null;
@@ -119,6 +161,11 @@ export async function getListingById(id: string): Promise<Listing | null> {
 export async function addListing(formData: z.infer<typeof ListingFormSchema>): Promise<{ success: boolean; listing?: Listing; error?: any }> {
     const result = ListingFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
+    if (!isFirebaseConfigured) {
+        const listing = addDemoListing(result.data);
+        revalidatePath('/listings');
+        return { success: true, listing };
+    }
 
     try {
         const newListingData = { ...result.data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
@@ -135,6 +182,12 @@ export async function addListing(formData: z.infer<typeof ListingFormSchema>): P
 export async function updateListing(id: string, formData: z.infer<typeof ListingFormSchema>): Promise<{ success: boolean; listing?: Listing; error?: any }> {
     const result = ListingFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
+    if (!isFirebaseConfigured) {
+        const listing = updateDemoListing(id, result.data);
+        if (!listing) return { success: false, error: { _form: ['Demo listing not found.'] } };
+        revalidatePath('/listings');
+        return { success: true, listing };
+    }
 
     try {
         const listingRef = doc(db, 'listings', id);
@@ -150,6 +203,12 @@ export async function updateListing(id: string, formData: z.infer<typeof Listing
 }
 
 export async function deleteListing(id: string): Promise<{ success: boolean; error?: string }> {
+    if (!isFirebaseConfigured) {
+        const deleted = deleteDemoListing(id);
+        if (!deleted) return { success: false, error: 'Demo listing not found.' };
+        revalidatePath('/listings');
+        return { success: true };
+    }
     try {
         await deleteDoc(doc(db, 'listings', id));
         revalidatePath('/listings');
@@ -162,17 +221,27 @@ export async function deleteListing(id: string): Promise<{ success: boolean; err
 // CHANNEL PARTNER ACTIONS
 export async function getChannelPartners(): Promise<ChannelPartner[]> {
     noStore();
-    const q = query(channelPartnersCollection, orderBy('createdAt', 'desc'));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return { id: doc.id, ...data, createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(), updatedAt: data.updatedAt?.toDate().toISOString() || new Date().toISOString() } as ChannelPartner;
-    });
+    if (!isFirebaseConfigured) return demoChannelPartners;
+    try {
+        const q = query(channelPartnersCollection, orderBy('createdAt', 'desc'));
+        const querySnapshot = await getDocs(q);
+        return querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            return { id: doc.id, ...data, createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(), updatedAt: data.updatedAt?.toDate().toISOString() || new Date().toISOString() } as ChannelPartner;
+        });
+    } catch (error) {
+        return demoChannelPartners;
+    }
 }
 
 export async function addChannelPartner(formData: z.infer<typeof ChannelPartnerFormSchema>): Promise<{ success: boolean; partner?: ChannelPartner; error?: any }> {
     const result = ChannelPartnerFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
+    if (!isFirebaseConfigured) {
+        const partner = addDemoChannelPartner(result.data);
+        revalidatePath('/channel-partners');
+        return { success: true, partner };
+    }
 
     try {
         const serialNumber = await getNextSerialNumber('P', channelPartnersCollection);
@@ -196,6 +265,12 @@ export async function addChannelPartner(formData: z.infer<typeof ChannelPartnerF
 export async function updateChannelPartner(id: string, formData: z.infer<typeof ChannelPartnerFormSchema>): Promise<{ success: boolean; partner?: ChannelPartner; error?: any }> {
     const result = ChannelPartnerFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
+    if (!isFirebaseConfigured) {
+        const partner = updateDemoChannelPartner(id, result.data);
+        if (!partner) return { success: false, error: { _form: ['Demo channel partner not found.'] } };
+        revalidatePath('/channel-partners');
+        return { success: true, partner };
+    }
 
     try {
         const partnerRef = doc(db, 'channelPartners', id);
@@ -211,6 +286,12 @@ export async function updateChannelPartner(id: string, formData: z.infer<typeof 
 }
 
 export async function deleteChannelPartner(id: string): Promise<{ success: boolean; error?: string }> {
+    if (!isFirebaseConfigured) {
+        const deleted = deleteDemoChannelPartner(id);
+        if (!deleted) return { success: false, error: 'Demo channel partner not found.' };
+        revalidatePath('/channel-partners');
+        return { success: true };
+    }
     try {
         await deleteDoc(doc(db, 'channelPartners', id));
         revalidatePath('/channel-partners');
