@@ -13,6 +13,7 @@ import { getFirebaseAuth, isFirebaseConfigured } from '@/lib/firebase-auth-clien
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const passwordChanged = searchParams.get('passwordChanged') === '1';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -54,6 +55,11 @@ export function LoginForm() {
 
   return (
     <form className="space-y-4" onSubmit={signIn}>
+      {passwordChanged && (
+        <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">
+          Password changed successfully. Sign in with your new password.
+        </p>
+      )}
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input

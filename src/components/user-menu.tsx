@@ -1,10 +1,14 @@
 'use client';
 
-import { LogOut } from 'lucide-react';
+import { useState } from 'react';
+import { signOut as firebaseSignOut } from 'firebase/auth';
+import { KeyRound, LogOut } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { ChangePasswordDialog } from '@/components/change-password-dialog';
+import { getFirebaseAuth } from '@/lib/firebase-auth-client';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,11 +21,16 @@ import type { SessionUser } from '@/lib/auth-server';
 
 export function UserMenu({ user }: { user: SessionUser }) {
   const router = useRouter();
+  const [isPasswordDialogOpen, setPasswordDialogOpen] = useState(false);
 
   async function signOut() {
-    await fetch('/api/auth/session', { method: 'DELETE' });
-    router.replace('/login');
-    router.refresh();
+    try {
+      await firebaseSignOut(getFirebaseAuth());
+    } finally {
+      await fetch('/api/auth/session', { method: 'DELETE' });
+      router.replace('/login');
+      router.refresh();
+    }
   }
 
   const initials = user.name
@@ -32,6 +41,7 @@ export function UserMenu({ user }: { user: SessionUser }) {
     .toUpperCase();
 
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" aria-label="Open account menu">
@@ -47,11 +57,21 @@ export function UserMenu({ user }: { user: SessionUser }) {
           <span className="block truncate text-xs font-normal text-muted-foreground">{user.email}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => setPasswordDialogOpen(true)}>
+          <KeyRound />
+          Change password
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={signOut}>
           <LogOut />
           Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    <ChangePasswordDialog
+      email={user.email}
+      isOpen={isPasswordDialogOpen}
+      onOpenChange={setPasswordDialogOpen}
+    />
+    </>
   );
 }

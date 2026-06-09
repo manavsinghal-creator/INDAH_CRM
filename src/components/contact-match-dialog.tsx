@@ -112,18 +112,18 @@ export function ContactMatchDialog({ isOpen, onOpenChange, listingId }: ContactM
                         ))
                     )}
                     {matchData && matchData.matchedContacts.length > 0 ? (
-                        matchData.matchedContacts.map((contact: any) => {
+                        matchData.matchedContacts.map((contact) => {
                             const initials = contact.name.split(' ').map((n: string) => n[0]).join('');
 
                             return (
                                 <Card key={contact.id} className="overflow-hidden border border-slate-100 hover:border-slate-200 transition-colors">
                                     <CardHeader className="pb-2">
-                                        <div className='flex items-start justify-between gap-4 w-full'>
-                                            <div className='flex items-center gap-4'>
+                                        <div className='flex flex-col gap-3 w-full sm:flex-row sm:items-start sm:justify-between sm:gap-4'>
+                                            <div className='flex min-w-0 items-center gap-4'>
                                                 <Avatar>
                                                     <AvatarFallback>{initials}</AvatarFallback>
                                                 </Avatar>
-                                                <div>
+                                                <div className="min-w-0">
                                                     <div className="flex items-center gap-2 flex-wrap">
                                                         <CardTitle className="text-lg">{contact.name}</CardTitle>
                                                         {contact.matchScore != null && (
@@ -140,20 +140,21 @@ export function ContactMatchDialog({ isOpen, onOpenChange, listingId }: ContactM
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div className="ml-auto flex gap-2">
+                                            <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
                                                 <Button
                                                   variant="outline"
-                                                  size="icon"
-                                                  className="h-8 w-8"
+                                                  size="sm"
+                                                  className="flex-1 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 sm:flex-none"
                                                   disabled={!contact.phone}
-                                                  aria-label={`Create WhatsApp draft for ${contact.name}`}
+                                                  title={contact.phone ? `Send ${listing?.listingName || 'property'} to ${contact.name}` : 'Add a phone number to send this property'}
                                                   onClick={() => setDraftRecipient(contact)}
                                                 >
-                                                  <MessageCircle className="h-4 w-4 text-emerald-600" />
+                                                  <MessageCircle className="mr-2 h-4 w-4" />
+                                                  Send Property
                                                 </Button>
                                                 {contact.email && (
-                                                    <Button variant="outline" size="icon" asChild className="h-8 w-8">
-                                                        <Link href={`mailto:${contact.email}`}><Mail className="h-4 w-4"/></Link>
+                                                    <Button variant="outline" size="icon" asChild className="h-9 w-9 shrink-0">
+                                                        <Link href={`mailto:${contact.email}`} aria-label={`Email ${contact.name}`}><Mail className="h-4 w-4"/></Link>
                                                     </Button>
                                                 )}
                                             </div>
