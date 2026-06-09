@@ -30,13 +30,26 @@ export const ContactSchema = z.object({
   notes: z.string().optional(),
   referenceContact: z.string().optional(),
   isActive: z.boolean().optional().default(true),
+  createdByName: z.string().optional(),
+  createdByEmail: z.string().email().optional(),
+  updatedByName: z.string().optional(),
+  updatedByEmail: z.string().email().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 
 export type Contact = z.infer<typeof ContactSchema>;
 
-export const ContactFormSchema = ContactSchema.omit({ id: true, serialNumber: true, createdAt: true, updatedAt: true });
+export const ContactFormSchema = ContactSchema.omit({
+  id: true,
+  serialNumber: true,
+  createdByName: true,
+  createdByEmail: true,
+  updatedByName: true,
+  updatedByEmail: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export type ContactFormData = z.infer<typeof ContactFormSchema>;
 
 export const projectStatusOptions = ["Pre-Launch", "Under Construction", "Ready to Move"] as const;
@@ -192,6 +205,27 @@ export type ChannelPartner = z.infer<typeof ChannelPartnerSchema>;
 
 export const ChannelPartnerFormSchema = ChannelPartnerSchema.omit({ id: true, serialNumber: true, createdAt: true, updatedAt: true });
 export type ChannelPartnerFormData = z.infer<typeof ChannelPartnerFormSchema>;
+
+export type ActivityAction = 'created' | 'updated' | 'deleted' | 'whatsappDraftOpened';
+export type ActivityEntityType = 'contact' | 'listing' | 'channelPartner';
+
+export type ActivityChange = {
+  field: string;
+  before: string;
+  after: string;
+};
+
+export type ActivityLog = {
+  id: string;
+  userEmail: string;
+  userName: string;
+  action: ActivityAction;
+  entityType: ActivityEntityType;
+  entityId: string;
+  entityLabel: string;
+  changes: ActivityChange[];
+  createdAt: string;
+};
 
 // TASK GENERATOR (Rule-based)
 export const TaskSchema = z.object({

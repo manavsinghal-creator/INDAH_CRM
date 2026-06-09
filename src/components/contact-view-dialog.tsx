@@ -19,7 +19,8 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { PropertyMatchDialog } from './property-match-dialog';
-import { Sparkles } from 'lucide-react';
+import { MessageCircle, Sparkles } from 'lucide-react';
+import { ContactWhatsAppDialog } from './contact-whatsapp-dialog';
 
 interface ContactViewDialogProps {
   isOpen: boolean;
@@ -41,6 +42,7 @@ const DetailItem: React.FC<{ label: string; value?: string | number | null; clas
 
 export function ContactViewDialog({ isOpen, onOpenChange, contact, allListings }: ContactViewDialogProps) {
   const [isPropertyMatchOpen, setPropertyMatchOpen] = React.useState(false);
+  const [isWhatsAppOpen, setWhatsAppOpen] = React.useState(false);
   if (!contact) return null;
 
   const initials = contact.name.split(' ').map((n) => n[0]).join('');
@@ -54,7 +56,7 @@ export function ContactViewDialog({ isOpen, onOpenChange, contact, allListings }
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-4">
                 <Avatar className="h-16 w-16 text-xl">
                     <AvatarFallback>{initials}</AvatarFallback>
                 </Avatar>
@@ -64,10 +66,16 @@ export function ContactViewDialog({ isOpen, onOpenChange, contact, allListings }
                         Contact Details (ID: {contact.serialNumber})
                     </DialogDescription>
                 </div>
-                 <Button variant="outline" size="sm" className="ml-auto" onClick={() => setPropertyMatchOpen(true)}>
+                <div className="ml-auto flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setWhatsAppOpen(true)}>
+                    <MessageCircle className="mr-2 h-4 w-4 text-emerald-600" />
+                    WhatsApp Draft
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setPropertyMatchOpen(true)}>
                     <Sparkles className="mr-2 h-4 w-4" />
                     Find Matching Properties
-                </Button>
+                  </Button>
+                </div>
             </div>
         </DialogHeader>
         <ScrollArea className="max-h-[60vh] pr-6 -mr-2">
@@ -130,7 +138,9 @@ export function ContactViewDialog({ isOpen, onOpenChange, contact, allListings }
 
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-muted-foreground">
                 <DetailItem label="Contact Created" value={format(new Date(contact.createdAt), "PPP p")} />
+                <DetailItem label="Added By" value={`${contact.createdByName || 'Admin'} (${contact.createdByEmail || 'manavsinghal@gmail.com'})`} />
                 <DetailItem label="Last Updated" value={format(new Date(contact.updatedAt), "PPP p")} />
+                <DetailItem label="Last Updated By" value={`${contact.updatedByName || contact.createdByName || 'Admin'} (${contact.updatedByEmail || contact.createdByEmail || 'manavsinghal@gmail.com'})`} />
             </div>
 
           </div>
@@ -147,6 +157,15 @@ export function ContactViewDialog({ isOpen, onOpenChange, contact, allListings }
             isOpen={isPropertyMatchOpen} 
             onOpenChange={setPropertyMatchOpen}
             contact={contact}
+            allListings={allListings}
+        />
+    )}
+    {isWhatsAppOpen && (
+        <ContactWhatsAppDialog
+            isOpen={isWhatsAppOpen}
+            onOpenChange={setWhatsAppOpen}
+            contact={contact}
+            listings={allListings}
         />
     )}
     </>

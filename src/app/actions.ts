@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { db, isCrmDatabaseConfigured } from '@/lib/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, serverTimestamp, getDoc } from 'firebase/firestore';
 
-import { Contact, ContactFormSchema, Listing, ListingFormSchema, ChannelPartner, ChannelPartnerFormSchema, GenerateDescriptionInputSchema, QuickPropertyMatcherInputSchema } from '@/lib/types';
+import { ActivityAction, ActivityChange, ActivityEntityType, ActivityLog, Contact, ContactFormSchema, Listing, ListingFormSchema, ChannelPartner, ChannelPartnerFormSchema, GenerateDescriptionInputSchema, QuickPropertyMatcherInputSchema } from '@/lib/types';
 import { QuickPropertyMatcherOutput } from '@/lib/types';
 import {
     addDemoChannelPartner,
@@ -24,30 +24,154 @@ import {
     updateDemoListing,
 } from '@/lib/demo-data';
 import { requireAuthorizedUser } from '@/lib/auth-server';
+import { PRIMARY_ADMIN_EMAIL } from '@/lib/auth-config';
 
 const contactsCollection = collection(db, 'contacts');
 const listingsCollection = collection(db, 'listings');
 const channelPartnersCollection = collection(db, 'channelPartners');
+const activityLogsCollection = collection(db, 'activityLogs');
+
+function withLegacyContactOwnership(contact: Contact): Contact {
+    return {
+        ...contact,
+        createdByName: contact.createdByName || 'Admin',
+        createdByEmail: contact.createdByEmail || PRIMARY_ADMIN_EMAIL,
+        updatedByName: contact.updatedByName || contact.createdByName || 'Admin',
+        updatedByEmail: contact.updatedByEmail || contact.createdByEmail || PRIMARY_ADMIN_EMAIL,
+    };
+}
+
+function displayActivityValue(value: unknown): string {
+    if (value === undefined || value === null || value === '') return '—';
+    if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+}
+
+function getActivityChanges(before: Record<string, unknown>, after: Record<string, unknown>): ActivityChange[] {
+    return Object.keys(after)
+        .filter((field) => displayActivityValue(before[field]) !== displayActivityValue(after[field]))
+        .map((field) => ({
+            field,
+            before: displayActivityValue(before[field]),
+            after: displayActivityValue(after[field]),
+        }));
+}
+
+async function logActivity({
+    userEmail,
+    userName,
+    action,
+    entityType,
+    entityId,
+    entityLabel,
+    changes = [],
+}: {
+    userEmail: string;
+    userName: string;
+    action: ActivityAction;
+    entityType: ActivityEntityType;
+    entityId: string;
+    entityLabel: string;
+    changes?: ActivityChange[];
+}) {
+    if (!isCrmDatabaseConfigured) return;
+    try {
+        await addDoc(activityLogsCollection, {
+            userEmail,
+            userName,
+            action,
+            entityType,
+            entityId,
+            entityLabel,
+            changes,
+            createdAt: serverTimestamp(),
+        });
+        revalidatePath('/activity');
+    } catch (error) {
+        console.error('Failed to record CRM activity', error);
+    }
+}
+
+export async function getActivityLogs(): Promise<ActivityLog[]> {
+    await requireAuthorizedUser();
+    noStore();
+    if (!isCrmDatabaseConfigured) return [];
+
+    try {
+        const snapshot = await getDocs(query(activityLogsCollection, orderBy('createdAt', 'desc'), limit(300)));
+        return snapshot.docs.map((activityDoc) => {
+            const data = activityDoc.data();
+            return {
+                id: activityDoc.id,
+                userEmail: data.userEmail || '',
+                userName: data.userName || data.userEmail || '',
+                action: data.action,
+                entityType: data.entityType,
+                entityId: data.entityId || '',
+                entityLabel: data.entityLabel || data.entityId || '',
+                changes: data.changes || [],
+                createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
+            } as ActivityLog;
+        });
+    } catch (error) {
+        console.error('Failed to load CRM activity', error);
+        return [];
+    }
+}
+
+const WhatsAppDraftActivitySchema = z.object({
+    recipientId: z.string().min(1),
+    recipientName: z.string().min(1),
+    recipientType: z.enum(['contact', 'channelPartner']),
+    phone: z.string().min(1),
+    listingIds: z.array(z.string()),
+    listingNames: z.array(z.string()),
+});
+
+export async function recordWhatsAppDraftOpened(input: z.infer<typeof WhatsAppDraftActivitySchema>): Promise<{ success: boolean }> {
+    const user = await requireAuthorizedUser();
+    const result = WhatsAppDraftActivitySchema.safeParse(input);
+    if (!result.success) return { success: false };
+
+    await logActivity({
+        userEmail: user.email,
+        userName: user.name,
+        action: 'whatsappDraftOpened',
+        entityType: result.data.recipientType,
+        entityId: result.data.recipientId,
+        entityLabel: result.data.recipientName,
+        changes: [
+            { field: 'phone', before: '—', after: result.data.phone },
+            {
+                field: 'listingsIncluded',
+                before: '—',
+                after: result.data.listingNames.length ? result.data.listingNames.join(', ') : '—',
+            },
+        ],
+    });
+    return { success: true };
+}
 
 // CONTACT ACTIONS
 export async function getContacts(): Promise<Contact[]> {
     await requireAuthorizedUser();
     noStore();
-    if (!isCrmDatabaseConfigured) return demoContacts;
+    if (!isCrmDatabaseConfigured) return demoContacts.map(withLegacyContactOwnership);
     try {
         const q = query(contactsCollection, orderBy('createdAt', 'desc'));
         const querySnapshot = await getDocs(q);
         return querySnapshot.docs.map(doc => {
             const data = doc.data();
-            return {
+            return withLegacyContactOwnership({
                 id: doc.id,
                 ...data,
                 createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
                 updatedAt: data.updatedAt?.toDate().toISOString() || new Date().toISOString(),
-            } as Contact;
+            } as Contact);
         });
     } catch (error) {
-        return demoContacts;
+        return demoContacts.map(withLegacyContactOwnership);
     }
 }
 
@@ -64,7 +188,7 @@ async function getNextSerialNumber(prefix: string, coll: any): Promise<string> {
 }
 
 export async function addContact(formData: z.infer<typeof ContactFormSchema>): Promise<{ success: boolean; contact?: Contact; error?: any }> {
-    await requireAuthorizedUser();
+    const user = await requireAuthorizedUser();
     const result = ContactFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
     if (!isCrmDatabaseConfigured) {
@@ -78,6 +202,10 @@ export async function addContact(formData: z.infer<typeof ContactFormSchema>): P
         const newContactData = {
             ...result.data,
             serialNumber,
+            createdByName: user.name,
+            createdByEmail: user.email,
+            updatedByName: user.name,
+            updatedByEmail: user.email,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
         };
@@ -86,6 +214,14 @@ export async function addContact(formData: z.infer<typeof ContactFormSchema>): P
         revalidatePath('/');
         const docSnap = await getDoc(docRef);
         const savedData = docSnap.data();
+        await logActivity({
+            userEmail: user.email,
+            userName: user.name,
+            action: 'created',
+            entityType: 'contact',
+            entityId: docRef.id,
+            entityLabel: result.data.name,
+        });
         return { success: true, contact: { id: docRef.id, ...savedData, createdAt: savedData?.createdAt?.toDate().toISOString(), updatedAt: savedData?.updatedAt?.toDate().toISOString() } as Contact };
     } catch (error) {
         return { success: false, error: { _form: ['Failed to add contact.'] } };
@@ -93,7 +229,7 @@ export async function addContact(formData: z.infer<typeof ContactFormSchema>): P
 }
 
 export async function updateContact(id: string, formData: z.infer<typeof ContactFormSchema>): Promise<{ success: boolean; contact?: Contact; error?: any }> {
-    await requireAuthorizedUser();
+    const user = await requireAuthorizedUser();
     const result = ContactFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
     if (!isCrmDatabaseConfigured) {
@@ -105,11 +241,27 @@ export async function updateContact(id: string, formData: z.infer<typeof Contact
 
     try {
         const contactRef = doc(db, 'contacts', id);
-        const updatedData = { ...result.data, updatedAt: serverTimestamp() };
+        const beforeSnapshot = await getDoc(contactRef);
+        const beforeData = beforeSnapshot.data() || {};
+        const updatedData = {
+            ...result.data,
+            updatedByName: user.name,
+            updatedByEmail: user.email,
+            updatedAt: serverTimestamp(),
+        };
         await updateDoc(contactRef, updatedData);
         revalidatePath('/');
         const docSnap = await getDoc(contactRef);
         const savedData = docSnap.data();
+        await logActivity({
+            userEmail: user.email,
+            userName: user.name,
+            action: 'updated',
+            entityType: 'contact',
+            entityId: id,
+            entityLabel: result.data.name,
+            changes: getActivityChanges(beforeData, result.data),
+        });
         return { success: true, contact: { id: id, ...savedData, createdAt: savedData?.createdAt?.toDate().toISOString(), updatedAt: savedData?.updatedAt?.toDate().toISOString() } as Contact };
     } catch (error) {
         return { success: false, error: { _form: ['Failed to update contact.'] } };
@@ -117,7 +269,7 @@ export async function updateContact(id: string, formData: z.infer<typeof Contact
 }
 
 export async function deleteContact(id: string): Promise<{ success: boolean; error?: string }> {
-    await requireAuthorizedUser();
+    const user = await requireAuthorizedUser();
     if (!isCrmDatabaseConfigured) {
         const deleted = deleteDemoContact(id);
         if (!deleted) return { success: false, error: 'Demo contact not found.' };
@@ -125,8 +277,19 @@ export async function deleteContact(id: string): Promise<{ success: boolean; err
         return { success: true };
     }
     try {
-        await deleteDoc(doc(db, 'contacts', id));
+        const contactRef = doc(db, 'contacts', id);
+        const beforeSnapshot = await getDoc(contactRef);
+        const beforeData = beforeSnapshot.data();
+        await deleteDoc(contactRef);
         revalidatePath('/');
+        await logActivity({
+            userEmail: user.email,
+            userName: user.name,
+            action: 'deleted',
+            entityType: 'contact',
+            entityId: id,
+            entityLabel: beforeData?.name || id,
+        });
         return { success: true };
     } catch (error) {
         return { success: false, error: 'Failed to delete contact.' };
@@ -166,7 +329,7 @@ export async function getListingById(id: string): Promise<Listing | null> {
 }
 
 export async function addListing(formData: z.infer<typeof ListingFormSchema>): Promise<{ success: boolean; listing?: Listing; error?: any }> {
-    await requireAuthorizedUser();
+    const user = await requireAuthorizedUser();
     const result = ListingFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
     if (!isCrmDatabaseConfigured) {
@@ -181,6 +344,14 @@ export async function addListing(formData: z.infer<typeof ListingFormSchema>): P
         revalidatePath('/listings');
         const docSnap = await getDoc(docRef);
         const savedData = docSnap.data();
+        await logActivity({
+            userEmail: user.email,
+            userName: user.name,
+            action: 'created',
+            entityType: 'listing',
+            entityId: docRef.id,
+            entityLabel: result.data.listingName,
+        });
         return { success: true, listing: { id: docRef.id, ...savedData, createdAt: savedData?.createdAt?.toDate().toISOString(), updatedAt: savedData?.updatedAt?.toDate().toISOString() } as Listing };
     } catch (error) {
         return { success: false, error: { _form: ['Failed to add listing.'] } };
@@ -188,7 +359,7 @@ export async function addListing(formData: z.infer<typeof ListingFormSchema>): P
 }
 
 export async function updateListing(id: string, formData: z.infer<typeof ListingFormSchema>): Promise<{ success: boolean; listing?: Listing; error?: any }> {
-    await requireAuthorizedUser();
+    const user = await requireAuthorizedUser();
     const result = ListingFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
     if (!isCrmDatabaseConfigured) {
@@ -200,11 +371,22 @@ export async function updateListing(id: string, formData: z.infer<typeof Listing
 
     try {
         const listingRef = doc(db, 'listings', id);
+        const beforeSnapshot = await getDoc(listingRef);
+        const beforeData = beforeSnapshot.data() || {};
         const updatedData = { ...result.data, updatedAt: serverTimestamp() };
         await updateDoc(listingRef, updatedData);
         revalidatePath('/listings');
         const docSnap = await getDoc(listingRef);
         const savedData = docSnap.data();
+        await logActivity({
+            userEmail: user.email,
+            userName: user.name,
+            action: 'updated',
+            entityType: 'listing',
+            entityId: id,
+            entityLabel: result.data.listingName,
+            changes: getActivityChanges(beforeData, result.data),
+        });
         return { success: true, listing: { id: id, ...savedData, createdAt: savedData?.createdAt?.toDate().toISOString(), updatedAt: savedData?.updatedAt?.toDate().toISOString() } as Listing };
     } catch (error) {
         return { success: false, error: { _form: ['Failed to update listing.'] } };
@@ -212,7 +394,7 @@ export async function updateListing(id: string, formData: z.infer<typeof Listing
 }
 
 export async function deleteListing(id: string): Promise<{ success: boolean; error?: string }> {
-    await requireAuthorizedUser();
+    const user = await requireAuthorizedUser();
     if (!isCrmDatabaseConfigured) {
         const deleted = deleteDemoListing(id);
         if (!deleted) return { success: false, error: 'Demo listing not found.' };
@@ -220,8 +402,19 @@ export async function deleteListing(id: string): Promise<{ success: boolean; err
         return { success: true };
     }
     try {
-        await deleteDoc(doc(db, 'listings', id));
+        const listingRef = doc(db, 'listings', id);
+        const beforeSnapshot = await getDoc(listingRef);
+        const beforeData = beforeSnapshot.data();
+        await deleteDoc(listingRef);
         revalidatePath('/listings');
+        await logActivity({
+            userEmail: user.email,
+            userName: user.name,
+            action: 'deleted',
+            entityType: 'listing',
+            entityId: id,
+            entityLabel: beforeData?.listingName || id,
+        });
         return { success: true };
     } catch (error) {
         return { success: false, error: 'Failed to delete listing.' };
@@ -246,12 +439,12 @@ export async function getChannelPartners(): Promise<ChannelPartner[]> {
 }
 
 export async function addChannelPartner(formData: z.infer<typeof ChannelPartnerFormSchema>): Promise<{ success: boolean; partner?: ChannelPartner; error?: any }> {
-    await requireAuthorizedUser();
+    const user = await requireAuthorizedUser();
     const result = ChannelPartnerFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
     if (!isCrmDatabaseConfigured) {
         const partner = addDemoChannelPartner(result.data);
-        revalidatePath('/channel-partners');
+        revalidatePath('/partners');
         return { success: true, partner };
     }
 
@@ -265,9 +458,17 @@ export async function addChannelPartner(formData: z.infer<typeof ChannelPartnerF
         };
 
         const docRef = await addDoc(channelPartnersCollection, newPartnerData);
-        revalidatePath('/channel-partners');
+        revalidatePath('/partners');
         const docSnap = await getDoc(docRef);
         const savedData = docSnap.data();
+        await logActivity({
+            userEmail: user.email,
+            userName: user.name,
+            action: 'created',
+            entityType: 'channelPartner',
+            entityId: docRef.id,
+            entityLabel: result.data.name,
+        });
         return { success: true, partner: { id: docRef.id, ...savedData, createdAt: savedData?.createdAt?.toDate().toISOString(), updatedAt: savedData?.updatedAt?.toDate().toISOString() } as ChannelPartner };
     } catch (error) {
         return { success: false, error: { _form: ['Failed to add channel partner.'] } };
@@ -275,23 +476,34 @@ export async function addChannelPartner(formData: z.infer<typeof ChannelPartnerF
 }
 
 export async function updateChannelPartner(id: string, formData: z.infer<typeof ChannelPartnerFormSchema>): Promise<{ success: boolean; partner?: ChannelPartner; error?: any }> {
-    await requireAuthorizedUser();
+    const user = await requireAuthorizedUser();
     const result = ChannelPartnerFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
     if (!isCrmDatabaseConfigured) {
         const partner = updateDemoChannelPartner(id, result.data);
         if (!partner) return { success: false, error: { _form: ['Demo channel partner not found.'] } };
-        revalidatePath('/channel-partners');
+        revalidatePath('/partners');
         return { success: true, partner };
     }
 
     try {
         const partnerRef = doc(db, 'channelPartners', id);
+        const beforeSnapshot = await getDoc(partnerRef);
+        const beforeData = beforeSnapshot.data() || {};
         const updatedData = { ...result.data, updatedAt: serverTimestamp() };
         await updateDoc(partnerRef, updatedData);
-        revalidatePath('/channel-partners');
+        revalidatePath('/partners');
         const docSnap = await getDoc(partnerRef);
         const savedData = docSnap.data();
+        await logActivity({
+            userEmail: user.email,
+            userName: user.name,
+            action: 'updated',
+            entityType: 'channelPartner',
+            entityId: id,
+            entityLabel: result.data.name,
+            changes: getActivityChanges(beforeData, result.data),
+        });
         return { success: true, partner: { id: id, ...savedData, createdAt: savedData?.createdAt?.toDate().toISOString(), updatedAt: savedData?.updatedAt?.toDate().toISOString() } as ChannelPartner };
     } catch (error) {
         return { success: false, error: { _form: ['Failed to update channel partner.'] } };
@@ -299,16 +511,27 @@ export async function updateChannelPartner(id: string, formData: z.infer<typeof 
 }
 
 export async function deleteChannelPartner(id: string): Promise<{ success: boolean; error?: string }> {
-    await requireAuthorizedUser();
+    const user = await requireAuthorizedUser();
     if (!isCrmDatabaseConfigured) {
         const deleted = deleteDemoChannelPartner(id);
         if (!deleted) return { success: false, error: 'Demo channel partner not found.' };
-        revalidatePath('/channel-partners');
+        revalidatePath('/partners');
         return { success: true };
     }
     try {
-        await deleteDoc(doc(db, 'channelPartners', id));
-        revalidatePath('/channel-partners');
+        const partnerRef = doc(db, 'channelPartners', id);
+        const beforeSnapshot = await getDoc(partnerRef);
+        const beforeData = beforeSnapshot.data();
+        await deleteDoc(partnerRef);
+        revalidatePath('/partners');
+        await logActivity({
+            userEmail: user.email,
+            userName: user.name,
+            action: 'deleted',
+            entityType: 'channelPartner',
+            entityId: id,
+            entityLabel: beforeData?.name || id,
+        });
         return { success: true };
     } catch (error) {
         return { success: false, error: 'Failed to delete channel partner.' };

@@ -165,7 +165,64 @@ export function ChannelPartnerList({ initialPartners }: { initialPartners: Chann
             </div>
         </div>
 
-      <div className="rounded-xl border bg-card text-card-foreground shadow">
+      <div className="space-y-3 md:hidden">
+        {isClient && sortedPartners.map((partner) => (
+          <article key={partner.id} className="rounded-md border bg-card p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="font-semibold">{partner.name}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">{partner.companyName}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{partner.serialNumber}</p>
+              </div>
+              <Badge variant={partner.partnerType === 'Official' ? 'default' : 'secondary'}>{partner.partnerType}</Badge>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="text-xs text-muted-foreground">City</p>
+                <p>{partner.city}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Clientele</p>
+                <p>{partner.clienteleType}</p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-xs text-muted-foreground">Investment preference</p>
+                <p>{partner.investmentPreference}</p>
+              </div>
+            </div>
+            <div className="mt-4 flex items-center gap-1 border-t pt-3">
+              <Button variant="ghost" size="icon" onClick={() => handleView(partner)} aria-label={`View ${partner.name}`}>
+                <Eye className="h-4 w-4"/>
+              </Button>
+              <Button variant="ghost" size="icon" asChild>
+                <a href={`mailto:${partner.email}`} aria-label={`Email ${partner.name}`}><Mail className="h-4 w-4" /></a>
+              </Button>
+              <Button variant="ghost" size="icon" onClick={() => handleEdit(partner)} aria-label={`Edit ${partner.name}`}>
+                <Edit className="h-4 w-4" />
+              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="icon" className="ml-auto text-destructive" aria-label={`Delete ${partner.name}`}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                    <AlertDialogDescription>This will permanently delete the partner {partner.name}.</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => handleDelete(partner.id)} disabled={isPending}>{isPending ? 'Deleting...' : 'Delete'}</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <div className="hidden rounded-xl border bg-card text-card-foreground shadow md:block">
         <div className="relative max-h-[calc(100vh-22rem)] overflow-auto">
           <Table>
             <TableHeader className="sticky top-0 bg-card z-10">

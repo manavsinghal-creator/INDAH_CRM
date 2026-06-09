@@ -11,25 +11,33 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import type { Contact } from '@/lib/types';
+import type { Contact, Listing } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { Sparkles, Copy, Check } from 'lucide-react';
+import { Sparkles, Copy, Check, MessageCircle } from 'lucide-react';
 import { Skeleton } from './ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { WhatsAppDraftDialog } from './whatsapp-draft-dialog';
 
 interface PropertyMatchDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   contact: Contact;
+  allListings: Listing[];
 }
 
-export function PropertyMatchDialog({ isOpen, onOpenChange, contact }: PropertyMatchDialogProps) {
+export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings }: PropertyMatchDialogProps) {
   const [isMatching, startTransition] = React.useTransition();
   const [recommendations, setRecommendations] = React.useState('');
   const [suggestedProperties, setSuggestedProperties] = React.useState<any[]>([]);
+  const [draftListing, setDraftListing] = React.useState<(Listing & { matchReason?: string }) | null>(null);
   const { toast } = useToast();
+  const findMatchedListing = (property: any) => allListings.find((listing) =>
+    listing.id === property.id
+    || listing.listingId === property.id
+    || listing.listingName.toLowerCase() === String(property.name || '').toLowerCase()
+  );
 
   const handleMatch = React.useCallback(() => {
     if (!contact) return;
@@ -86,6 +94,7 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact }: PropertyM
   };
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -153,6 +162,19 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact }: PropertyM
                                         </CardHeader>
                                         <CardContent className="pt-3 text-sm space-y-3">
                                             <p className="text-muted-foreground leading-relaxed">{property.matchReason}</p>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={!contact.phone || !findMatchedListing(property)}
+                                                onClick={() => {
+                                                    const listing = findMatchedListing(property);
+                                                    if (listing) setDraftListing({ ...listing, matchReason: property.matchReason });
+                                                }}
+                                            >
+                                                <MessageCircle className="mr-2 h-4 w-4 text-emerald-600" />
+                                                WhatsApp Draft
+                                            </Button>
                                             
                                             {property.keySellingPoints && property.keySellingPoints.length > 0 && (
                                                 <div className="space-y-1.5 pt-2 border-t border-slate-100">
@@ -187,5 +209,16 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact }: PropertyM
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    {draftListing && (
+      <WhatsAppDraftDialog
+        isOpen={!!draftListing}
+        onOpenChange={(open) => {
+          if (!open) setDraftListing(null);
+        }}
+        recipient={{ id: contact.id, name: contact.name, phone: contact.phone, type: 'contact' }}
+        listings={[draftListing]}
+      />
+    )}
+    </>
   );
 }

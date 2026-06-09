@@ -27,7 +27,7 @@ import { useToast } from '@/hooks/use-toast';
 import { getContacts, getChannelPartners } from '@/app/actions';
 // findQuickPropertyMatches moved to fetch
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
-import { Search, Sparkles, Send } from 'lucide-react';
+import { Sparkles, MessageCircle } from 'lucide-react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { QuickPropertyMatcherInputSchema, budgetOptions, bhkOptions, type QuickPropertyMatcherOutput, type Contact, type ChannelPartner } from '@/lib/types';
@@ -37,6 +37,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from './ui/
 import { Skeleton } from './ui/skeleton';
 import { Separator } from './ui/separator';
 import { Checkbox } from './ui/checkbox';
+import { WhatsAppDraftDialog } from './whatsapp-draft-dialog';
 
 type MatchedListing = QuickPropertyMatcherOutput['matchedListings'][0];
 type FormData = z.infer<typeof QuickPropertyMatcherInputSchema>;
@@ -51,8 +52,8 @@ export function QuickMatchDialog() {
   const [contacts, setContacts] = React.useState<Contact[]>([]);
   const [partners, setPartners] = React.useState<ChannelPartner[]>([]);
   const [selectedRecipientId, setSelectedRecipientId] = React.useState<string | null>(null);
-  const [newNumber, setNewNumber] = React.useState('');
   const [isRecipientDataLoading, setRecipientDataLoading] = React.useState(false);
+  const [isDraftOpen, setDraftOpen] = React.useState(false);
   
   const { toast } = useToast();
   
@@ -72,7 +73,6 @@ export function QuickMatchDialog() {
       setSelectedListings([]);
       setView('form');
       setSelectedRecipientId(null);
-      setNewNumber('');
       setRecipientDataLoading(true);
       Promise.all([getContacts(), getChannelPartners()])
         .then(([contactsData, partnersData]) => {
@@ -122,26 +122,10 @@ export function QuickMatchDialog() {
     ...partners.map(p => ({ ...p, type: 'Channel Partner' as const })),
   ];
   
-  const handleSend = () => {
-    let recipientName = 'Valued Client';
-
-    if (selectedRecipientId) {
-        const selected = allRecipients.find(r => r.id === selectedRecipientId);
-        if (selected) {
-            recipientName = selected.name;
-        }
-    }
-
-    const listingsText = selectedListings.map(l => 
-        `*${l.listingName}* (ID: ${l.listingId})\n- Type: ${l.bhkConfiguration} ${l.propertyType}\n- Location: ${l.location}\n- Price: Rs. ${l.basePrice} Cr.\n- More Info: ${l.listingUrl || l.externalPublicLink || '(URL not available)'}`
-    ).join('\n\n');
-
-    const message = `Hello ${recipientName},\n\nAs per your request, here are some properties I found that match your criteria. Please find the details below:\n\n${listingsText}\n\nLet me know if any of these catch your eye. I look forward to hearing from you.\n\nBest Regards,\nINDAH LIVING`;
-    navigator.clipboard.writeText(message).catch(console.error);
-    setOpen(false);
-  };
+  const selectedRecipient = allRecipients.find((recipient) => recipient.id === selectedRecipientId);
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="bg-accent/10 text-accent-foreground border-accent/30 hover:bg-accent/20">
@@ -237,11 +221,28 @@ export function QuickMatchDialog() {
             </div>
              <DialogFooter>
                 <Button variant="ghost" onClick={() => setView('form')}>Back</Button>
-                <Button onClick={handleSend} disabled={(!selectedRecipientId) || selectedListings.length === 0}><Send className="mr-2 h-4 w-4" /> Copy Details</Button>
+                <Button onClick={() => setDraftOpen(true)} disabled={(!selectedRecipientId) || selectedListings.length === 0}>
+                  <MessageCircle className="mr-2 h-4 w-4" />
+                  Preview WhatsApp Draft
+                </Button>
              </DialogFooter>
            </>
         )}
       </DialogContent>
     </Dialog>
+    {isDraftOpen && selectedRecipient && (
+      <WhatsAppDraftDialog
+        isOpen={isDraftOpen}
+        onOpenChange={setDraftOpen}
+        recipient={{
+          id: selectedRecipient.id,
+          name: selectedRecipient.name,
+          phone: selectedRecipient.phone,
+          type: selectedRecipient.type === 'Contact' ? 'contact' : 'channelPartner',
+        }}
+        listings={selectedListings.map((listing) => ({ ...listing, id: listing.listingId }))}
+      />
+    )}
+    </>
   );
 }

@@ -20,9 +20,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { ScrollArea } from './ui/scroll-area';
 import { type ContactMatcherOutput } from '@/lib/types';
 import { Avatar, AvatarFallback } from './ui/avatar';
-import { Mail, Users, Check, AlertTriangle } from 'lucide-react';
+import { Mail, Users, Check, AlertTriangle, MessageCircle } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from './ui/badge';
+import { WhatsAppDraftDialog } from './whatsapp-draft-dialog';
 
 
 interface ContactMatchDialogProps {
@@ -35,6 +36,7 @@ export function ContactMatchDialog({ isOpen, onOpenChange, listingId }: ContactM
   const [listing, setListing] = React.useState<Listing | null>(null);
   const [isMatching, startTransition] = React.useTransition();
   const [matchData, setMatchData] = React.useState<ContactMatcherOutput | null>(null);
+  const [draftRecipient, setDraftRecipient] = React.useState<ContactMatcherOutput['matchedContacts'][number] | null>(null);
   const { toast } = useToast();
 
   const handleMatch = React.useCallback(async (id: string) => {
@@ -77,10 +79,10 @@ export function ContactMatchDialog({ isOpen, onOpenChange, listingId }: ContactM
     }
   }, [isOpen, listingId, handleMatch]);
 
-  const whatsAppMessage = listing ? `Hi, I found a property I think you will be interested in: ${listing.listingName} in ${listing.location} (Listing ID: ${listing.listingId}). It is a ${listing.bhkConfiguration} ${listing.propertyType}. Let me know if you would like more details. You can view it here: ${listing.listingUrl || listing.externalPublicLink || '(URL not available)'}` : '';
   const matchCount = matchData?.matchedContacts?.length ?? 0;
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -139,6 +141,16 @@ export function ContactMatchDialog({ isOpen, onOpenChange, listingId }: ContactM
                                                 </div>
                                             </div>
                                             <div className="ml-auto flex gap-2">
+                                                <Button
+                                                  variant="outline"
+                                                  size="icon"
+                                                  className="h-8 w-8"
+                                                  disabled={!contact.phone}
+                                                  aria-label={`Create WhatsApp draft for ${contact.name}`}
+                                                  onClick={() => setDraftRecipient(contact)}
+                                                >
+                                                  <MessageCircle className="h-4 w-4 text-emerald-600" />
+                                                </Button>
                                                 {contact.email && (
                                                     <Button variant="outline" size="icon" asChild className="h-8 w-8">
                                                         <Link href={`mailto:${contact.email}`}><Mail className="h-4 w-4"/></Link>
@@ -193,5 +205,21 @@ export function ContactMatchDialog({ isOpen, onOpenChange, listingId }: ContactM
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    {draftRecipient && listing && (
+      <WhatsAppDraftDialog
+        isOpen={!!draftRecipient}
+        onOpenChange={(open) => {
+          if (!open) setDraftRecipient(null);
+        }}
+        recipient={{
+          id: draftRecipient.id,
+          name: draftRecipient.name,
+          phone: draftRecipient.phone || '',
+          type: 'contact',
+        }}
+        listings={[{ ...listing, matchReason: draftRecipient.matchReason }]}
+      />
+    )}
+    </>
   );
 }
