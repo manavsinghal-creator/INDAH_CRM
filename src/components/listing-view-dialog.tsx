@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { Check, Copy, Minus, Sparkles, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { ContactMatchDialog } from './contact-match-dialog';
+import { getListingAvailability, isListingAvailable } from '@/lib/crm-status';
 
 interface ListingViewDialogProps {
   isOpen: boolean;
@@ -89,7 +90,7 @@ export function ListingViewDialog({ isOpen, onOpenChange, listing, onDuplicate }
                 Viewing full details for Listing ID: {listing.listingId || 'N/A'} (Internal Project: {listing.projectName})
               </DialogDescription>
             </div>
-            <Button variant="outline" size="sm" className="ml-auto" onClick={() => setContactMatchOpen(true)}>
+            <Button variant="outline" size="sm" className="ml-auto" onClick={() => setContactMatchOpen(true)} disabled={!isListingAvailable(listing)}>
                 <Sparkles className="mr-2 h-4 w-4" />
                 Find Matching Contacts
             </Button>
@@ -123,6 +124,9 @@ export function ListingViewDialog({ isOpen, onOpenChange, listing, onDuplicate }
                 <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                     <DetailItem label="Property Type" value={listing.propertyType === 'Other' ? listing.propertyTypeOther : listing.propertyType} />
                     <DetailItem label="Project Status" value={listing.projectStatus} />
+                    <DetailItem label="Availability">
+                        <Badge variant={isListingAvailable(listing) ? 'default' : 'outline'}>{getListingAvailability(listing)}</Badge>
+                    </DetailItem>
                      <DetailItem label="Website Status">
                         {listing.websiteStatus ? <Badge variant={getWebsiteStatusVariant(listing.websiteStatus)}>{listing.websiteStatus}</Badge> : null}
                     </DetailItem>

@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import type { Listing } from '@/lib/types';
+import { listingAvailabilityOptions, type Listing, type ListingAvailability } from '@/lib/types';
 import { useSearchParams } from 'next/navigation';
 import {
   Table,
@@ -63,9 +63,10 @@ import { useRouter } from 'next/navigation';
 import { ListingCard } from './listing-card';
 import { cn } from '@/lib/utils';
 import { QuickMatchDialog } from './quick-match-dialog';
+import { getListingAvailability, isListingAvailable } from '@/lib/crm-status';
 
 
-type SortKey = keyof Pick<Listing, 'listingId' | 'listingName' | 'projectName' | 'propertyType' | 'location' | 'bhkConfiguration' | 'carpetArea' | 'builtUpArea' | 'projectStatus' | 'basePrice' | 'pricePerSqFt' | 'totalUnits' | 'availableUnits' | 'plotArea' | 'furnishing' | 'websiteStatus' | 'exclusiveMandate' | 'updatedAt' | 'externalPublicLink' | 'isActive'>;
+type SortKey = keyof Pick<Listing, 'listingId' | 'listingName' | 'projectName' | 'propertyType' | 'location' | 'bhkConfiguration' | 'carpetArea' | 'builtUpArea' | 'projectStatus' | 'availabilityStatus' | 'basePrice' | 'pricePerSqFt' | 'totalUnits' | 'availableUnits' | 'plotArea' | 'furnishing' | 'websiteStatus' | 'exclusiveMandate' | 'updatedAt' | 'externalPublicLink' | 'isActive'>;
 type ViewMode = 'list' | 'grid';
 
 function ListingListContent({ initialListings }: { initialListings: Listing[] }) {
@@ -73,6 +74,7 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
   const [sortKey, setSortKey] = React.useState<SortKey>('updatedAt');
   const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('desc');
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [availabilityFilter, setAvailabilityFilter] = React.useState<'All' | ListingAvailability>('All');
   const [isFormOpen, setFormOpen] = React.useState(false);
   const [isViewOpen, setViewOpen] = React.useState(false);
   const [isSendDialogOpen, setSendDialogOpen] = React.useState(false);
@@ -143,7 +145,7 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
 
   const handleSelectAll = (isSelected: boolean) => {
     if (isSelected) {
-      setSelectedListings(sortedListings.map(l => l.id));
+      setSelectedListings(selectableListings.map(l => l.id));
     } else {
       setSelectedListings([]);
     }
@@ -152,7 +154,7 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
   const sortedListings = React.useMemo(() => {
     return [...initialListings].filter(listing => {
         const query = searchQuery.toLowerCase();
-        return (
+        const matchesSearch = (
             (listing.listingId && listing.listingId.toLowerCase().includes(query)) ||
             (listing.listingName && listing.listingName.toLowerCase().includes(query)) ||
             listing.projectName.toLowerCase().includes(query) ||
@@ -160,6 +162,7 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
             listing.bhkConfiguration.toLowerCase().includes(query) ||
             listing.location.toLowerCase().includes(query) ||
             listing.projectStatus.toLowerCase().includes(query) ||
+            getListingAvailability(listing).toLowerCase().includes(query) ||
             (listing.websiteStatus && listing.websiteStatus.toLowerCase().includes(query)) ||
             (listing.highlight && listing.highlight.toLowerCase().includes(query)) ||
             String(listing.carpetArea).includes(query) ||
@@ -167,7 +170,8 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
             String(listing.basePrice).includes(query) ||
             String(listing.pricePerSqFt).includes(query) ||
             String(listing.availableUnits).includes(query)
-        )
+        );
+        return matchesSearch && (availabilityFilter === 'All' || getListingAvailability(listing) === availabilityFilter);
     }).sort((a, b) => {
       let aValue: any, bValue: any;
 
@@ -179,27 +183,37 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
       if (sortKey === 'isActive') {
         aValue = a.isActive ?? true;
         bValue = b.isActive ?? true;
-      }
-      
-      const aKey = a[sortKey];
-      const bKey = b[sortKey];
-
-      if (typeof aKey === 'number' && typeof bKey === 'number') {
-        aValue = aKey;
-        bValue = bKey;
-      } else if (typeof aKey === 'boolean' && typeof bKey === 'boolean') {
-        aValue = aKey;
-        bValue = bKey;
+      } else if (sortKey === 'availabilityStatus') {
+        aValue = getListingAvailability(a);
+        bValue = getListingAvailability(b);
       } else {
-        aValue = String(aKey ?? '').toLowerCase();
-        bValue = String(bKey ?? '').toLowerCase();
+        const aKey = a[sortKey];
+        const bKey = b[sortKey];
+        if (typeof aKey === 'number' && typeof bKey === 'number') {
+          aValue = aKey;
+          bValue = bKey;
+        } else if (typeof aKey === 'boolean' && typeof bKey === 'boolean') {
+          aValue = aKey;
+          bValue = bKey;
+        } else {
+          aValue = String(aKey ?? '').toLowerCase();
+          bValue = String(bKey ?? '').toLowerCase();
+        }
       }
       
       if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [initialListings, sortKey, sortOrder, searchQuery]);
+  }, [availabilityFilter, initialListings, sortKey, sortOrder, searchQuery]);
+  const selectableListings = React.useMemo(() => sortedListings.filter(isListingAvailable), [sortedListings]);
+  const availabilityCounts = React.useMemo(() => {
+    const counts = Object.fromEntries(listingAvailabilityOptions.map((status) => [status, 0])) as Record<ListingAvailability, number>;
+    initialListings.forEach((listing) => {
+      counts[getListingAvailability(listing)] += 1;
+    });
+    return counts;
+  }, [initialListings]);
   
   const getSortIcon = (key: SortKey) => {
     if (sortKey !== key) return <ArrowUpDown className="ml-2 h-4 w-4 opacity-30" />;
@@ -207,7 +221,7 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
   };
 
   const selectedListingsData = React.useMemo(() => {
-    return initialListings.filter(l => selectedListings.includes(l.id));
+    return initialListings.filter(l => selectedListings.includes(l.id) && isListingAvailable(l));
   }, [initialListings, selectedListings]);
 
   const getWebsiteStatusInfo = (status: Listing['websiteStatus']): { text: string; variant: "default" | "warm" | "outline" } => {
@@ -276,6 +290,19 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
             </div>
         </div>
 
+        <section aria-label="Listing availability" className="border-y bg-muted/20 py-3 print-hidden">
+          <div className="flex gap-2 overflow-x-auto px-1 pb-1">
+            <Button type="button" size="sm" variant={availabilityFilter === 'All' ? 'default' : 'outline'} onClick={() => setAvailabilityFilter('All')} className="shrink-0">
+              All Listings <Badge variant="secondary" className="ml-2">{initialListings.length}</Badge>
+            </Button>
+            {listingAvailabilityOptions.map((status) => (
+              <Button key={status} type="button" size="sm" variant={availabilityFilter === status ? 'default' : 'outline'} onClick={() => setAvailabilityFilter(status)} className="shrink-0">
+                {status} <Badge variant="secondary" className="ml-2">{availabilityCounts[status]}</Badge>
+              </Button>
+            ))}
+          </div>
+        </section>
+
         {viewMode === 'list' ? (
           <div className="rounded-xl border bg-card text-card-foreground shadow">
             <div className="relative max-h-[calc(100vh-22rem)] overflow-auto print-h-auto">
@@ -284,13 +311,14 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
                   <TableRow>
                     <TableHead className="sticky top-0 bg-card w-12 print-hidden">
                        <Checkbox
-                          checked={selectedListings.length > 0 && selectedListings.length < sortedListings.length ? 'indeterminate' : sortedListings.length > 0 && selectedListings.length === sortedListings.length}
+                          checked={selectedListings.length > 0 && selectedListings.length < selectableListings.length ? 'indeterminate' : selectableListings.length > 0 && selectedListings.length === selectableListings.length}
                           onCheckedChange={(checked) => handleSelectAll(!!checked)}
                           aria-label="Select all"
                           />
                     </TableHead>
                     <TableHead onClick={() => handleSort('listingId')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Listing ID {getSortIcon('listingId')}</div></TableHead>
                     <TableHead onClick={() => handleSort('listingName')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Listing Name {getSortIcon('listingName')}</div></TableHead>
+                    <TableHead onClick={() => handleSort('availabilityStatus')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Availability {getSortIcon('availabilityStatus')}</div></TableHead>
                     <TableHead onClick={() => handleSort('projectName')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Project Name {getSortIcon('projectName')}</div></TableHead>
                     <TableHead onClick={() => handleSort('propertyType')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Type {getSortIcon('propertyType')}</div></TableHead>
                     <TableHead onClick={() => handleSort('location')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Location {getSortIcon('location')}</div></TableHead>
@@ -338,16 +366,18 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
                       sortedListings.map(listing => {
                       const statusInfo = getWebsiteStatusInfo(listing.websiteStatus);
                       return (
-                      <TableRow key={listing.id} data-state={selectedListings.includes(listing.id) ? "selected" : ""} className={cn((listing.isActive === false) && 'bg-destructive/10 text-destructive-foreground hover:bg-destructive/20')}>
+                      <TableRow key={listing.id} data-state={selectedListings.includes(listing.id) ? "selected" : ""} className={cn(!isListingAvailable(listing) && 'bg-muted/50 text-muted-foreground')}>
                           <TableCell className="print-hidden">
                             <Checkbox
                                 checked={selectedListings.includes(listing.id)}
                                 onCheckedChange={(checked) => handleSelectListing(listing.id, !!checked)}
                                 aria-label={`Select listing ${listing.listingId}`}
+                                disabled={!isListingAvailable(listing)}
                             />
                           </TableCell>
                           <TableCell className="font-mono text-muted-foreground">{listing.listingId}</TableCell>
                           <TableCell className="font-medium">{listing.listingName}</TableCell>
+                          <TableCell><Badge variant={isListingAvailable(listing) ? 'default' : 'outline'}>{getListingAvailability(listing)}</Badge></TableCell>
                           <TableCell>{listing.projectName}</TableCell>
                           <TableCell>{listing.propertyType}</TableCell>
                           <TableCell>{listing.location}</TableCell>

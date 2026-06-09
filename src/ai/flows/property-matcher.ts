@@ -1,68 +1,119 @@
-
 'use server';
 
 /**
- * @fileOverview An AI agent that matches contacts with property listings.
+ * @fileOverview A two-stage contact-to-property matcher.
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'zod';
 import { getListings } from '@/app/actions';
+import { createMatchCacheKey, getCachedMatch, setCachedMatch } from '@/lib/ai-match-cache';
+import {
+  compactListingForMatch,
+  scoreListingForContact,
+  type RankedListing,
+} from '@/lib/property-matching';
+import { MatchMetadataSchema, type Contact } from '@/lib/types';
+import { isListingAvailable } from '@/lib/crm-status';
+import { z } from 'zod';
+
+const MAX_AI_CANDIDATES = 20;
+const MAX_RETURNED_MATCHES = 5;
+const MIN_LOCAL_CANDIDATE_SCORE = 20;
+const AI_TIMEOUT_MS = 10_000;
 
 const PropertyMatcherInputSchema = z.object({
   contact: z.any().describe('The contact object with their details and preferences.'),
 });
 export type PropertyMatcherInput = z.infer<typeof PropertyMatcherInputSchema>;
 
+const SuggestedPropertySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  matchScore: z.number(),
+  matchReason: z.string(),
+  keySellingPoints: z.array(z.string()),
+});
+
+const AiPropertyMatcherOutputSchema = z.object({
+  recommendations: z.string(),
+  suggestedProperties: z.array(SuggestedPropertySchema),
+});
+
 const PropertyMatcherOutputSchema = z.object({
-  recommendations: z
-    .string()
-    .describe('A concise, friendly summary of top 2-3 recommended properties in beautiful markdown.'),
-  suggestedProperties: z.array(z.object({
-    id: z.string(),
-    name: z.string(),
-    matchScore: z.number().describe('A score from 0 to 100 representing match quality'),
-    matchReason: z.string().describe('Individual reason why this property fits'),
-    keySellingPoints: z.array(z.string()).describe('Key USPs of this property matching client preference'),
-  })).optional().describe('Structured list of properties recommended'),
+  recommendations: z.string(),
+  suggestedProperties: z.array(SuggestedPropertySchema),
+  matchMetadata: MatchMetadataSchema,
 });
 export type PropertyMatcherOutput = z.infer<typeof PropertyMatcherOutputSchema>;
 
-export async function propertyMatcher(
-  input: PropertyMatcherInput
-): Promise<PropertyMatcherOutput> {
+function compactContact(contact: Contact) {
+  return {
+    id: contact.id,
+    updatedAt: contact.updatedAt,
+    name: contact.name,
+    budget: contact.budget,
+    status: contact.status,
+    city: contact.city,
+    locationPreference: contact.locationPreference,
+    propertyPreference: contact.propertyPreference,
+    notes: contact.notes?.slice(0, 300),
+  };
+}
+
+function createLocalFallback(candidates: RankedListing[]): PropertyMatcherOutput {
+  const suggestedProperties = candidates
+    .filter((candidate) => candidate.localScore >= 45)
+    .slice(0, MAX_RETURNED_MATCHES)
+    .map(({ listing, localScore, keyFitFactors }) => ({
+      id: listing.id,
+      name: listing.listingName,
+      matchScore: localScore,
+      matchReason: keyFitFactors.length
+        ? `${listing.listingName} aligns with ${keyFitFactors.join(', ').toLowerCase()}.`
+        : `${listing.listingName} may suit this buyer profile.`,
+      keySellingPoints: keyFitFactors,
+    }));
+
+  const recommendations = suggestedProperties.length
+    ? suggestedProperties
+      .map((property) => `**${property.name}** (${property.matchScore}% match)\n- ${property.matchReason}`)
+      .join('\n\n')
+    : 'No strong property matches were found. Try broadening the contact preferences.';
+
+  return {
+    recommendations,
+    suggestedProperties,
+    matchMetadata: {
+      source: 'local-fallback',
+      cached: false,
+      candidateCount: candidates.length,
+    },
+  };
+}
+
+export async function propertyMatcher(input: PropertyMatcherInput): Promise<PropertyMatcherOutput> {
   return propertyMatcherFlow(input);
 }
 
 const prompt = ai.definePrompt({
   name: 'propertyMatcherPrompt',
-  input: { schema: z.object({ contact: z.any(), listings: z.string() }) },
-  output: { schema: PropertyMatcherOutputSchema },
-  prompt: `You are an expert real estate consultant. Match the client with the best matching 2-3 properties from the listings.
-  
-Client: {{{contact.name}}}
-Budget Category: {{{contact.budget}}}
-Location Preference: {{{contact.locationPreference}}}
-Property Preferred Type: {{{contact.propertyPreference}}}
-Notes/Preferences: {{{contact.notes}}}
+  input: { schema: z.object({ contact: z.string(), listings: z.string() }) },
+  output: { schema: AiPropertyMatcherOutputSchema },
+  prompt: `You are a real-estate consultant refining a locally ranked property shortlist for one buyer.
 
-Evaluate how well each listing matches the client's dimensions (Budget Category vs Listing basePrice, Preferred Locations vs Listing location, Property Preference vs Listing propertyType, specific keywords in notes vs Listing amenities and USPs).
+Verify the local ranking and return no more than ${MAX_RETURNED_MATCHES} strong properties. Do not invent listing IDs.
 
-Budget Category maps:
-- '<1' fits basePrice < 1
-- '1-3' fits 1 <= basePrice <= 3
-- '3-6' fits 3 <= basePrice <= 6
-- '6-10' fits 6 <= basePrice <= 10
-- '>10' fits basePrice > 10
+For each selected property:
+- Assign a matchScore from 0 to 100.
+- Write one concise personalized matchReason.
+- List short keySellingPoints.
 
-For each selected property, assign a 'matchScore' (0-100) representing match quality.
-Select the top 2-3 best properties.
+Also provide a concise recommendations summary in readable markdown.
 
-Produce:
-1. 'recommendations': A friendly, warm summary of these top recommendations in clean, readable markdown (using bold titles, nice negative space, and bullet list format). Do not use raw HTML. Let it sound professional, tailored to the client's explicit requirements.
-2. 'suggestedProperties': A structured list of these selected listings, including their ID, name, matchScore, individual matchReason, and a list of keySellingPoints.
+Buyer:
+{{{contact}}}
 
-Listings:
+Locally ranked property shortlist:
 {{{listings}}}`,
 });
 
@@ -73,11 +124,86 @@ const propertyMatcherFlow = ai.defineFlow(
     outputSchema: PropertyMatcherOutputSchema,
   },
   async (input) => {
+    const contact = input.contact as Contact;
+    const cacheKey = createMatchCacheKey('property-matcher', compactContact(contact));
+    const cachedResult = getCachedMatch<PropertyMatcherOutput>(cacheKey);
+    if (cachedResult) return cachedResult;
+
     const listings = await getListings();
-    const { output } = await prompt({
-      contact: input.contact,
-      listings: JSON.stringify(listings),
-    });
-    return output!;
+    const candidates = listings
+      .filter(isListingAvailable)
+      .map((listing) => scoreListingForContact(listing, contact))
+      .filter((candidate) => candidate.localScore >= MIN_LOCAL_CANDIDATE_SCORE)
+      .sort((left, right) => right.localScore - left.localScore)
+      .slice(0, MAX_AI_CANDIDATES);
+
+    if (candidates.length === 0) {
+      const result = createLocalFallback(candidates);
+      setCachedMatch(cacheKey, result);
+      return result;
+    }
+
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => abortController.abort(), AI_TIMEOUT_MS);
+
+    try {
+      const { output } = await prompt({
+        contact: JSON.stringify(compactContact(contact)),
+        listings: JSON.stringify(candidates.map(compactListingForMatch)),
+      }, {
+        abortSignal: abortController.signal,
+      });
+
+      if (!output) {
+        const result = createLocalFallback(candidates);
+        setCachedMatch(cacheKey, result);
+        return result;
+      }
+
+      const listingsById = new Map<string, RankedListing>();
+      candidates.forEach((candidate) => {
+        listingsById.set(candidate.listing.id, candidate);
+        if (candidate.listing.listingId) listingsById.set(candidate.listing.listingId, candidate);
+      });
+
+      const suggestedProperties = output.suggestedProperties
+        .map((property) => {
+          const candidate = listingsById.get(property.id);
+          if (!candidate) return null;
+          return {
+            ...property,
+            id: candidate.listing.id,
+            name: candidate.listing.listingName,
+          };
+        })
+        .filter((property): property is NonNullable<typeof property> => Boolean(property))
+        .sort((left, right) => right.matchScore - left.matchScore)
+        .slice(0, MAX_RETURNED_MATCHES);
+
+      if (suggestedProperties.length === 0) {
+        const result = createLocalFallback(candidates);
+        setCachedMatch(cacheKey, result);
+        return result;
+      }
+
+      const result: PropertyMatcherOutput = {
+        recommendations: output.recommendations,
+        suggestedProperties,
+        matchMetadata: {
+          source: 'gemini',
+          cached: false,
+          candidateCount: candidates.length,
+        },
+      };
+      setCachedMatch(cacheKey, result);
+      return result;
+    } catch {
+      console.info('AI property matching unavailable; using local shortlist.');
+      const result = createLocalFallback(candidates);
+      setCachedMatch(cacheKey, result);
+      return result;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 );

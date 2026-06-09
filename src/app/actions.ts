@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { db, isCrmDatabaseConfigured } from '@/lib/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, serverTimestamp, getDoc } from 'firebase/firestore';
 
-import { ActivityAction, ActivityChange, ActivityEntityType, ActivityLog, Contact, ContactFormSchema, Listing, ListingFormSchema, ChannelPartner, ChannelPartnerFormSchema, GenerateDescriptionInputSchema, QuickPropertyMatcherInputSchema } from '@/lib/types';
+import { ActivityAction, ActivityChange, ActivityEntityType, ActivityLog, Contact, ContactFormSchema, Listing, ListingFormSchema, ChannelPartner, ChannelPartnerFormSchema, GenerateDescriptionInputSchema, QuickPropertyMatcherInputSchema, budgetOptions, leadStageOptions, listingAvailabilityOptions, projectStatusOptions, propertyTypeOptions } from '@/lib/types';
 import { QuickPropertyMatcherOutput } from '@/lib/types';
 import {
     addDemoChannelPartner,
@@ -25,6 +25,9 @@ import {
 } from '@/lib/demo-data';
 import { requireAuthorizedUser } from '@/lib/auth-server';
 import { PRIMARY_ADMIN_EMAIL } from '@/lib/auth-config';
+import { findContactDuplicates } from '@/lib/contact-duplicates';
+import { getContactLeadStage, getListingAvailability, isListingAvailable } from '@/lib/crm-status';
+import { clearMatchCache } from '@/lib/ai-match-cache';
 
 const contactsCollection = collection(db, 'contacts');
 const listingsCollection = collection(db, 'listings');
@@ -34,10 +37,18 @@ const activityLogsCollection = collection(db, 'activityLogs');
 function withLegacyContactOwnership(contact: Contact): Contact {
     return {
         ...contact,
+        leadStage: contact.leadStage || 'New',
         createdByName: contact.createdByName || 'Admin',
         createdByEmail: contact.createdByEmail || PRIMARY_ADMIN_EMAIL,
         updatedByName: contact.updatedByName || contact.createdByName || 'Admin',
         updatedByEmail: contact.updatedByEmail || contact.createdByEmail || PRIMARY_ADMIN_EMAIL,
+    };
+}
+
+function withLegacyListingAvailability(listing: Listing): Listing {
+    return {
+        ...listing,
+        availabilityStatus: getListingAvailability(listing),
     };
 }
 
@@ -191,8 +202,13 @@ export async function addContact(formData: z.infer<typeof ContactFormSchema>): P
     const user = await requireAuthorizedUser();
     const result = ContactFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
+    const duplicates = findContactDuplicates(await getContacts(), result.data);
+    if (duplicates.length) {
+        return { success: false, error: { duplicates, _form: ['A contact with this phone number or email already exists.'] } };
+    }
     if (!isCrmDatabaseConfigured) {
         const contact = addDemoContact(result.data);
+        clearMatchCache();
         revalidatePath('/');
         return { success: true, contact };
     }
@@ -211,6 +227,7 @@ export async function addContact(formData: z.infer<typeof ContactFormSchema>): P
         };
 
         const docRef = await addDoc(contactsCollection, newContactData);
+        clearMatchCache();
         revalidatePath('/');
         const docSnap = await getDoc(docRef);
         const savedData = docSnap.data();
@@ -232,9 +249,14 @@ export async function updateContact(id: string, formData: z.infer<typeof Contact
     const user = await requireAuthorizedUser();
     const result = ContactFormSchema.safeParse(formData);
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
+    const duplicates = findContactDuplicates(await getContacts(), result.data, id);
+    if (duplicates.length) {
+        return { success: false, error: { duplicates, _form: ['Another contact with this phone number or email already exists.'] } };
+    }
     if (!isCrmDatabaseConfigured) {
         const contact = updateDemoContact(id, result.data);
         if (!contact) return { success: false, error: { _form: ['Demo contact not found.'] } };
+        clearMatchCache();
         revalidatePath('/');
         return { success: true, contact };
     }
@@ -250,6 +272,7 @@ export async function updateContact(id: string, formData: z.infer<typeof Contact
             updatedAt: serverTimestamp(),
         };
         await updateDoc(contactRef, updatedData);
+        clearMatchCache();
         revalidatePath('/');
         const docSnap = await getDoc(contactRef);
         const savedData = docSnap.data();
@@ -273,6 +296,7 @@ export async function deleteContact(id: string): Promise<{ success: boolean; err
     if (!isCrmDatabaseConfigured) {
         const deleted = deleteDemoContact(id);
         if (!deleted) return { success: false, error: 'Demo contact not found.' };
+        clearMatchCache();
         revalidatePath('/');
         return { success: true };
     }
@@ -281,6 +305,7 @@ export async function deleteContact(id: string): Promise<{ success: boolean; err
         const beforeSnapshot = await getDoc(contactRef);
         const beforeData = beforeSnapshot.data();
         await deleteDoc(contactRef);
+        clearMatchCache();
         revalidatePath('/');
         await logActivity({
             userEmail: user.email,
@@ -300,32 +325,35 @@ export async function deleteContact(id: string): Promise<{ success: boolean; err
 export async function getListings(): Promise<Listing[]> {
     await requireAuthorizedUser();
     noStore();
-    if (!isCrmDatabaseConfigured) return demoListings;
+    if (!isCrmDatabaseConfigured) return demoListings.map(withLegacyListingAvailability);
     try {
         const q = query(listingsCollection, orderBy('createdAt', 'desc'));
         const querySnapshot = await getDocs(q);
         return querySnapshot.docs.map(doc => {
             const data = doc.data();
-            return {
+            return withLegacyListingAvailability({
                 id: doc.id,
                 ...data,
                 createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
                 updatedAt: data.updatedAt?.toDate().toISOString() || new Date().toISOString(),
-            } as Listing;
+            } as Listing);
         });
     } catch (error) {
-        return demoListings;
+        return demoListings.map(withLegacyListingAvailability);
     }
 }
 
 export async function getListingById(id: string): Promise<Listing | null> {
     await requireAuthorizedUser();
-    if (!isCrmDatabaseConfigured) return demoListings.find((listing) => listing.id === id) || null;
+    if (!isCrmDatabaseConfigured) {
+        const listing = demoListings.find((item) => item.id === id);
+        return listing ? withLegacyListingAvailability(listing) : null;
+    }
     const docRef = doc(db, 'listings', id);
     const docSnap = await getDoc(docRef);
     if (!docSnap.exists()) return null;
     const data = docSnap.data();
-    return { id: docSnap.id, ...data, createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(), updatedAt: data.updatedAt?.toDate().toISOString() || new Date().toISOString() } as Listing;
+    return withLegacyListingAvailability({ id: docSnap.id, ...data, createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(), updatedAt: data.updatedAt?.toDate().toISOString() || new Date().toISOString() } as Listing);
 }
 
 export async function addListing(formData: z.infer<typeof ListingFormSchema>): Promise<{ success: boolean; listing?: Listing; error?: any }> {
@@ -334,13 +362,20 @@ export async function addListing(formData: z.infer<typeof ListingFormSchema>): P
     if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
     if (!isCrmDatabaseConfigured) {
         const listing = addDemoListing(result.data);
+        clearMatchCache();
         revalidatePath('/listings');
         return { success: true, listing };
     }
 
     try {
-        const newListingData = { ...result.data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+        const newListingData = {
+            ...result.data,
+            isActive: result.data.availabilityStatus === 'Available',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+        };
         const docRef = await addDoc(listingsCollection, newListingData);
+        clearMatchCache();
         revalidatePath('/listings');
         const docSnap = await getDoc(docRef);
         const savedData = docSnap.data();
@@ -365,6 +400,7 @@ export async function updateListing(id: string, formData: z.infer<typeof Listing
     if (!isCrmDatabaseConfigured) {
         const listing = updateDemoListing(id, result.data);
         if (!listing) return { success: false, error: { _form: ['Demo listing not found.'] } };
+        clearMatchCache();
         revalidatePath('/listings');
         return { success: true, listing };
     }
@@ -373,8 +409,13 @@ export async function updateListing(id: string, formData: z.infer<typeof Listing
         const listingRef = doc(db, 'listings', id);
         const beforeSnapshot = await getDoc(listingRef);
         const beforeData = beforeSnapshot.data() || {};
-        const updatedData = { ...result.data, updatedAt: serverTimestamp() };
+        const updatedData = {
+            ...result.data,
+            isActive: result.data.availabilityStatus === 'Available',
+            updatedAt: serverTimestamp(),
+        };
         await updateDoc(listingRef, updatedData);
+        clearMatchCache();
         revalidatePath('/listings');
         const docSnap = await getDoc(listingRef);
         const savedData = docSnap.data();
@@ -398,6 +439,7 @@ export async function deleteListing(id: string): Promise<{ success: boolean; err
     if (!isCrmDatabaseConfigured) {
         const deleted = deleteDemoListing(id);
         if (!deleted) return { success: false, error: 'Demo listing not found.' };
+        clearMatchCache();
         revalidatePath('/listings');
         return { success: true };
     }
@@ -406,6 +448,7 @@ export async function deleteListing(id: string): Promise<{ success: boolean; err
         const beforeSnapshot = await getDoc(listingRef);
         const beforeData = beforeSnapshot.data();
         await deleteDoc(listingRef);
+        clearMatchCache();
         revalidatePath('/listings');
         await logActivity({
             userEmail: user.email,
@@ -568,38 +611,68 @@ export async function getDashboardMetrics() {
 
     const buyers = contacts.filter(c => c.contactType === 'Buyer').length;
     const sellers = contacts.filter(c => c.contactType === 'Seller').length;
+    const contactsWithoutType = contacts.length - buyers - sellers;
+    const activeContacts = contacts.filter(c => c.isActive !== false).length;
+    const inactiveContacts = contacts.length - activeContacts;
     
-    // safe property access using reduce
     const budgetCounts = contacts.reduce((acc, c) => {
         acc[c.budget] = (acc[c.budget] || 0) + 1;
         return acc;
     }, {} as Record<string, number>);
-    const byBudget = Object.keys(budgetCounts).map(k => ({ budget: k, count: budgetCounts[k] }));
+    const byBudget = budgetOptions.map(budget => ({ budget, count: budgetCounts[budget] || 0 }));
+
+    const pipelineCounts = contacts
+        .filter(contact => contact.contactType === 'Buyer')
+        .reduce((acc, contact) => {
+            const stage = getContactLeadStage(contact);
+            acc[stage] = (acc[stage] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
+    const byPipelineStage = leadStageOptions.map(stage => ({ stage, count: pipelineCounts[stage] || 0 }));
 
     const exclusiveListings = listings.filter(l => l.exclusiveMandate);
     const nonExclusiveListings = listings.filter(l => !l.exclusiveMandate);
+    const availableListings = listings.filter(isListingAvailable);
     
     const calculateValue = (list: Listing[]) => list.reduce((sum, l) => sum + (Number(l.basePrice) || 0), 0);
 
-    const locationCounts = listings.reduce((acc, l) => { acc[l.location] = (acc[l.location] || 0) + 1; return acc; }, {} as Record<string, number>);
-    const byLocation = Object.keys(locationCounts).map(k => ({ location: k, count: locationCounts[k] }));
+    const locationCounts = listings.reduce((acc, l) => {
+        const location = l.location?.trim() || 'Not specified';
+        acc[location] = (acc[location] || 0) + 1;
+        return acc;
+    }, {} as Record<string, number>);
+    const byLocation = Object.keys(locationCounts)
+        .map(location => ({ location, count: locationCounts[location] }))
+        .sort((a, b) => b.count - a.count || a.location.localeCompare(b.location));
 
     const statusCounts = listings.reduce((acc, l) => { acc[l.projectStatus] = (acc[l.projectStatus] || 0) + 1; return acc; }, {} as Record<string, number>);
-    const byStatus = Object.keys(statusCounts).map(k => ({ status: k, count: statusCounts[k] }));
+    const byStatus = projectStatusOptions.map(status => ({ status, count: statusCounts[status] || 0 }));
+
+    const availabilityCounts = listings.reduce((acc, listing) => {
+        const status = getListingAvailability(listing);
+        acc[status] = (acc[status] || 0) + 1;
+        return acc;
+    }, {} as Record<string, number>);
+    const byAvailability = listingAvailabilityOptions.map(status => ({ status, count: availabilityCounts[status] || 0 }));
 
     const typeCounts = listings.reduce((acc, l) => { acc[l.propertyType] = (acc[l.propertyType] || 0) + 1; return acc; }, {} as Record<string, number>);
-    const byType = Object.keys(typeCounts).map(k => ({ type: k, count: typeCounts[k] }));
+    const byType = propertyTypeOptions
+        .map(type => ({ type, count: typeCounts[type] || 0 }))
+        .filter(item => item.count > 0);
 
-    // Price intervals: <1, 1-3, 3-6, >6
     const byPriceMap: Record<string, number> = { "<1": 0, "1-3": 0, "3-6": 0, ">6": 0 };
     listings.forEach(l => {
         const p = Number(l.basePrice) || 0;
         if (p < 1) byPriceMap["<1"]++;
-        else if (p < 3) byPriceMap["1-3"]++;
-        else if (p < 6) byPriceMap["3-6"]++;
+        else if (p <= 3) byPriceMap["1-3"]++;
+        else if (p <= 6) byPriceMap["3-6"]++;
         else byPriceMap[">6"]++;
     });
     const byPrice = Object.keys(byPriceMap).map(k => ({ range: k, count: byPriceMap[k] }));
+
+    const latestDate = (values: string[]) => values
+        .filter(Boolean)
+        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || null;
 
     return {
         success: true,
@@ -608,26 +681,41 @@ export async function getDashboardMetrics() {
                 total: contacts.length,
                 buyers,
                 sellers,
-                lastContactCreatedAt: contacts[0]?.createdAt || null,
-                byBudget
+                contactsWithoutType,
+                active: activeContacts,
+                inactive: inactiveContacts,
+                lastContactCreatedAt: latestDate(contacts.map(contact => contact.createdAt)),
+                byBudget,
+                byPipelineStage,
             },
             listings: {
                 total: listings.length,
+                available: availableListings.length,
                 exclusive: exclusiveListings.length,
                 nonExclusive: nonExclusiveListings.length,
-                lastListingCreatedAt: listings[0]?.createdAt || null,
+                lastListingCreatedAt: latestDate(listings.map(listing => listing.createdAt)),
                 totalInventoryValue: calculateValue(listings),
+                availableInventoryValue: calculateValue(availableListings),
                 exclusiveInventoryValue: calculateValue(exclusiveListings),
                 nonExclusiveInventoryValue: calculateValue(nonExclusiveListings),
                 byLocation,
                 byStatus,
+                byAvailability,
                 byPrice,
-                byType
+                byType,
             },
             partners: {
                 total: partners.length,
                 official: partners.filter(p => p.partnerType === 'Official').length,
                 general: partners.filter(p => p.partnerType === 'General').length,
+            },
+            dataQuality: {
+                contactsWithoutType,
+                contactsWithoutEmail: contacts.filter(contact => !contact.email).length,
+                listingsWithoutPublicLink: listings.filter(listing => !listing.listingUrl && !listing.externalPublicLink).length,
+                listingsWithoutDescription: listings.filter(listing => !listing.description).length,
+                listingsWithoutCarpetArea: listings.filter(listing => !listing.carpetArea).length,
+                zeroPriceListings: listings.filter(listing => !Number(listing.basePrice)).length,
             },
             lastUpdatedAt: new Date().toISOString()
         }

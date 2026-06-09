@@ -16,6 +16,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Contact, Listing } from '@/lib/types';
 import { WhatsAppDraftDialog } from '@/components/whatsapp-draft-dialog';
+import { isListingAvailable } from '@/lib/crm-status';
 
 interface ContactWhatsAppDialogProps {
   isOpen: boolean;
@@ -37,7 +38,8 @@ export function ContactWhatsAppDialog({
     if (isOpen) setSelectedIds(contact.offeredListings || []);
   }, [contact.offeredListings, isOpen]);
 
-  const selectedListings = listings.filter((listing) => selectedIds.includes(listing.id));
+  const availableListings = listings.filter(isListingAvailable);
+  const selectedListings = availableListings.filter((listing) => selectedIds.includes(listing.id));
 
   const toggleListing = (id: string) => {
     setSelectedIds((current) => current.includes(id)
@@ -57,7 +59,7 @@ export function ContactWhatsAppDialog({
           </DialogHeader>
           <ScrollArea className="h-[420px] pr-4">
             <div className="space-y-2 py-2">
-              {listings.map((listing) => (
+              {availableListings.map((listing) => (
                 <label
                   key={listing.id}
                   className="flex cursor-pointer items-start gap-3 rounded-md border p-3 hover:bg-muted/50"
@@ -75,7 +77,7 @@ export function ContactWhatsAppDialog({
                   </span>
                 </label>
               ))}
-              {listings.length === 0 && (
+              {availableListings.length === 0 && (
                 <p className="py-12 text-center text-sm text-muted-foreground">No listings are available.</p>
               )}
             </div>

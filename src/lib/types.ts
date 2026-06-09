@@ -12,6 +12,16 @@ export const budgetOptions = [
 export const statusOptions = ["Cold", "Warm", "Hot"] as const;
 export const contactTypeOptions = ["Buyer", "Seller"] as const;
 export const propertyTypeOptions = ["Apartment", "Villa", "Plot", "Commercial", "Other"] as const;
+export const leadStageOptions = [
+  "New",
+  "Contacted",
+  "Qualified",
+  "Property Shared",
+  "Site Visit",
+  "Negotiating",
+  "Closed/Lost",
+] as const;
+export type LeadStage = typeof leadStageOptions[number];
 
 
 export const ContactSchema = z.object({
@@ -24,6 +34,7 @@ export const ContactSchema = z.object({
   status: z.enum(statusOptions, { required_error: "Status is required." }),
   city: z.string().optional(),
   contactType: z.enum(contactTypeOptions).optional(),
+  leadStage: z.enum(leadStageOptions).optional().default("New"),
   locationPreference: z.string().optional(),
   propertyPreference: z.array(z.string()).optional(),
   offeredListings: z.array(z.string()).optional(),
@@ -59,6 +70,8 @@ export const constructionQualityOptions = ["High", "Medium", "Standard"] as cons
 export const accessibilityOptions = ["Main Road", "Internal Road"] as const;
 export const highlightOptions = ["Top Choice", "Amazing View", "Super Luxury", "Architectural Marvel"] as const;
 export const furnishingOptions = ["Unfurnished", "Semi Furnished", "Fully Furnished"] as const;
+export const listingAvailabilityOptions = ["Available", "On Hold", "Sold", "Temporarily Unavailable"] as const;
+export type ListingAvailability = typeof listingAvailabilityOptions[number];
 
 export const uspTagOptions = [
   "mediterranean",
@@ -153,6 +166,7 @@ export const ListingSchema = z.object({
   usps: z.array(z.string()).optional(),
   notes: z.string().optional(),
   additionalActions: z.array(z.string()).optional(),
+  availabilityStatus: z.enum(listingAvailabilityOptions).optional().default("Available"),
   isActive: z.boolean().optional().default(true),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -206,8 +220,8 @@ export type ChannelPartner = z.infer<typeof ChannelPartnerSchema>;
 export const ChannelPartnerFormSchema = ChannelPartnerSchema.omit({ id: true, serialNumber: true, createdAt: true, updatedAt: true });
 export type ChannelPartnerFormData = z.infer<typeof ChannelPartnerFormSchema>;
 
-export type ActivityAction = 'created' | 'updated' | 'deleted' | 'whatsappDraftOpened';
-export type ActivityEntityType = 'contact' | 'listing' | 'channelPartner';
+export type ActivityAction = 'created' | 'updated' | 'deleted' | 'whatsappDraftOpened' | 'signedIn';
+export type ActivityEntityType = 'contact' | 'listing' | 'channelPartner' | 'session';
 
 export type ActivityChange = {
   field: string;
@@ -241,6 +255,13 @@ export const TaskSchema = z.object({
 
 export type Task = z.infer<typeof TaskSchema>;
 
+export const MatchMetadataSchema = z.object({
+  source: z.enum(['gemini', 'local-fallback']),
+  cached: z.boolean(),
+  candidateCount: z.number(),
+});
+export type MatchMetadata = z.infer<typeof MatchMetadataSchema>;
+
 export const QuickPropertyMatcherInputSchema = z.object({
   budget: z.string().optional(),
   locationPreference: z.string().optional(),
@@ -258,8 +279,11 @@ export const QuickPropertyMatcherOutputSchema = z.object({
       basePrice: z.number(),
       listingUrl: z.string().optional(),
       externalPublicLink: z.string().optional(),
+      matchScore: z.number().optional(),
+      matchReason: z.string().optional(),
     })
   ),
+  matchMetadata: MatchMetadataSchema,
 });
 export type QuickPropertyMatcherOutput = z.infer<typeof QuickPropertyMatcherOutputSchema>;
 
@@ -274,6 +298,7 @@ export const ContactMatcherOutputSchema = z.object({
     keyFitFactors: z.array(z.string()).optional(),
     concernFactors: z.array(z.string()).optional(),
   })),
+  matchMetadata: MatchMetadataSchema,
 });
 export type ContactMatcherOutput = z.infer<typeof ContactMatcherOutputSchema>;
 

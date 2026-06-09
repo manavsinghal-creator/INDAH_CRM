@@ -38,6 +38,7 @@ import { Skeleton } from './ui/skeleton';
 import { Separator } from './ui/separator';
 import { Checkbox } from './ui/checkbox';
 import { WhatsAppDraftDialog } from './whatsapp-draft-dialog';
+import { MatchSourceBadge } from './match-source-badge';
 
 type MatchedListing = QuickPropertyMatcherOutput['matchedListings'][0];
 type FormData = z.infer<typeof QuickPropertyMatcherInputSchema>;
@@ -176,7 +177,12 @@ export function QuickMatchDialog() {
            <>
             <DialogHeader>
                 <DialogTitle>Matching Properties</DialogTitle>
-                <DialogDescription>Found {matchData?.matchedListings.length ?? 0} matching listings.</DialogDescription>
+                <DialogDescription>
+                  <span className="flex flex-wrap items-center gap-2">
+                    Found {matchData?.matchedListings.length ?? 0} matching listings.
+                    <MatchSourceBadge metadata={matchData?.matchMetadata} />
+                  </span>
+                </DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
                 <ScrollArea className="h-64 pr-4">
@@ -195,6 +201,11 @@ export function QuickMatchDialog() {
                                             <CardTitle className="text-base">{listing.listingName}</CardTitle>
                                             <CardDescription>{listing.bhkConfiguration} {listing.propertyType} in {listing.location}</CardDescription>
                                             <p className="text-sm font-semibold pt-1">Rs. {listing.basePrice} Cr.</p>
+                                            {listing.matchScore != null && (
+                                              <p className="text-xs text-muted-foreground">
+                                                {listing.matchScore}% match{listing.matchReason ? ` · ${listing.matchReason}` : ''}
+                                              </p>
+                                            )}
                                        </CardHeader>
                                    </Card>
                                </div>

@@ -30,6 +30,7 @@ const entityLabels: Record<ActivityEntityType, string> = {
   contact: 'Contact',
   listing: 'Listing',
   channelPartner: 'Channel Partner',
+  session: 'Login Session',
 };
 
 const actionLabels: Record<ActivityAction, string> = {
@@ -37,6 +38,7 @@ const actionLabels: Record<ActivityAction, string> = {
   updated: 'Updated',
   deleted: 'Deleted',
   whatsappDraftOpened: 'Opened WhatsApp draft',
+  signedIn: 'Signed in',
 };
 
 function humanizeField(field: string) {
@@ -48,6 +50,8 @@ function activityDetails(log: ActivityLog) {
     const listings = log.changes.find((change) => change.field === 'listingsIncluded')?.after;
     return listings && listings !== '—' ? `Listings: ${listings}` : 'WhatsApp draft prepared';
   }
+
+  if (log.action === 'signedIn') return 'Successful CRM login';
 
   if (log.action === 'updated' && log.changes.length > 0) {
     return `Changed ${log.changes.map((change) => humanizeField(change.field)).join(', ')}`;
@@ -166,6 +170,7 @@ export function ActivityLogList({ initialLogs }: { initialLogs: ActivityLog[] })
           <option value="updated">Updated</option>
           <option value="deleted">Deleted</option>
           <option value="whatsappDraftOpened">WhatsApp drafts</option>
+          <option value="signedIn">Sign-ins</option>
         </select>
         <select
           aria-label="Filter by record type"
@@ -177,6 +182,7 @@ export function ActivityLogList({ initialLogs }: { initialLogs: ActivityLog[] })
           <option value="contact">Contacts</option>
           <option value="listing">Listings</option>
           <option value="channelPartner">Channel Partners</option>
+          <option value="session">Login Sessions</option>
         </select>
         <div className="flex gap-2 md:hidden">
           <select

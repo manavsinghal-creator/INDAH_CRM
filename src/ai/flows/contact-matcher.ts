@@ -9,13 +9,15 @@
 
 import { ai } from '@/ai/genkit';
 import { getContacts } from '@/app/actions';
-import type { Contact, Listing } from '@/lib/types';
+import { createMatchCacheKey, getCachedMatch, setCachedMatch } from '@/lib/ai-match-cache';
+import { MatchMetadataSchema, type Contact, type Listing } from '@/lib/types';
+import { isListingAvailable } from '@/lib/crm-status';
 import { z } from 'zod';
 
 const MAX_AI_CANDIDATES = 30;
 const MAX_RETURNED_MATCHES = 15;
 const MIN_LOCAL_CANDIDATE_SCORE = 20;
-const AI_TIMEOUT_MS = 15_000;
+const AI_TIMEOUT_MS = 10_000;
 
 const ContactMatcherInputSchema = z.object({
   listing: z.any().describe('The property listing object.'),
@@ -44,6 +46,7 @@ const ContactMatcherOutputSchema = z.object({
     keyFitFactors: z.array(z.string()).optional(),
     concernFactors: z.array(z.string()).optional(),
   })),
+  matchMetadata: MatchMetadataSchema,
 });
 export type ContactMatcherOutput = z.infer<typeof ContactMatcherOutputSchema>;
 
@@ -142,6 +145,10 @@ function scoreContact(contact: Contact, listing: Listing): RankedContact {
 
 function compactListing(listing: Listing) {
   return {
+    id: listing.id,
+    updatedAt: listing.updatedAt,
+    availabilityStatus: listing.availabilityStatus,
+    isActive: listing.isActive,
     listingName: listing.listingName,
     projectName: listing.projectName,
     basePrice: listing.basePrice,
@@ -190,6 +197,11 @@ function createLocalFallback(candidates: RankedContact[]): ContactMatcherOutput 
         keyFitFactors,
         concernFactors,
       })),
+    matchMetadata: {
+      source: 'local-fallback',
+      cached: false,
+      candidateCount: candidates.length,
+    },
   };
 }
 
@@ -229,6 +241,13 @@ const contactMatcherFlow = ai.defineFlow(
   },
   async (input) => {
     const listing = input.listing as Listing;
+    if (!isListingAvailable(listing)) {
+      return createLocalFallback([]);
+    }
+    const cacheKey = createMatchCacheKey('contact-matcher', compactListing(listing));
+    const cachedResult = getCachedMatch<ContactMatcherOutput>(cacheKey);
+    if (cachedResult) return cachedResult;
+
     const allContacts = await getContacts();
     const candidates = allContacts
       .filter((contact) => contact.contactType === 'Buyer' && contact.isActive !== false)
@@ -237,7 +256,11 @@ const contactMatcherFlow = ai.defineFlow(
       .sort((left, right) => right.localScore - left.localScore)
       .slice(0, MAX_AI_CANDIDATES);
 
-    if (candidates.length === 0) return { matchedContacts: [] };
+    if (candidates.length === 0) {
+      const result = createLocalFallback(candidates);
+      setCachedMatch(cacheKey, result);
+      return result;
+    }
 
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), AI_TIMEOUT_MS);
@@ -250,7 +273,11 @@ const contactMatcherFlow = ai.defineFlow(
         abortSignal: abortController.signal,
       });
 
-      if (!output) return createLocalFallback(candidates);
+      if (!output) {
+        const result = createLocalFallback(candidates);
+        setCachedMatch(cacheKey, result);
+        return result;
+      }
 
       const contactsById = new Map(candidates.map(({ contact }) => [contact.id, contact]));
       const matchedContacts = output.matchedContacts
@@ -268,10 +295,27 @@ const contactMatcherFlow = ai.defineFlow(
         .sort((left, right) => right.matchScore - left.matchScore)
         .slice(0, MAX_RETURNED_MATCHES);
 
-      return { matchedContacts };
-    } catch (error) {
-      console.error('AI contact matching failed; using local shortlist.', error);
-      return createLocalFallback(candidates);
+      if (matchedContacts.length === 0) {
+        const result = createLocalFallback(candidates);
+        setCachedMatch(cacheKey, result);
+        return result;
+      }
+
+      const result: ContactMatcherOutput = {
+        matchedContacts,
+        matchMetadata: {
+          source: 'gemini',
+          cached: false,
+          candidateCount: candidates.length,
+        },
+      };
+      setCachedMatch(cacheKey, result);
+      return result;
+    } catch {
+      console.info('AI contact matching unavailable; using local shortlist.');
+      const result = createLocalFallback(candidates);
+      setCachedMatch(cacheKey, result);
+      return result;
     } finally {
       clearTimeout(timeout);
     }

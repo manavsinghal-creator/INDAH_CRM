@@ -21,6 +21,7 @@ import { Avatar, AvatarFallback } from './ui/avatar';
 import { PropertyMatchDialog } from './property-match-dialog';
 import { MessageCircle, Sparkles } from 'lucide-react';
 import { ContactWhatsAppDialog } from './contact-whatsapp-dialog';
+import { getContactLeadStage } from '@/lib/crm-status';
 
 interface ContactViewDialogProps {
   isOpen: boolean;
@@ -86,6 +87,9 @@ export function ContactViewDialog({ isOpen, onOpenChange, contact, allListings }
                 <DetailItem label="Phone Number" value={contact.phone} />
                 <DetailItem label="Client Status">
                     <Badge variant={contact.status.toLowerCase() as any} className="w-fit">{contact.status}</Badge>
+                </DetailItem>
+                <DetailItem label="Pipeline Stage">
+                    <Badge variant="outline" className="w-fit">{getContactLeadStage(contact)}</Badge>
                 </DetailItem>
             </div>
             
