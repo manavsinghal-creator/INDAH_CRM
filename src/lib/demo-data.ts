@@ -297,6 +297,10 @@ export function addDemoContact(data: ContactFormData): Contact {
     id: `demo-contact-${Date.now()}`,
     serialNumber: nextSerial('N', demoContacts.map((contact) => contact.serialNumber)),
     ...data,
+    createdByName: 'Admin',
+    createdByEmail: 'manavsinghal@gmail.com',
+    updatedByName: 'Admin',
+    updatedByEmail: 'manavsinghal@gmail.com',
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -315,6 +319,8 @@ export function updateDemoContact(id: string, data: ContactFormData): Contact | 
     id,
     serialNumber: demoContacts[index].serialNumber,
     createdAt: demoContacts[index].createdAt,
+    updatedByName: 'Admin',
+    updatedByEmail: 'manavsinghal@gmail.com',
     updatedAt: new Date().toISOString(),
   };
 

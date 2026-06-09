@@ -1,7 +1,6 @@
 'use client';
 
-import { LogOut, ShieldCheck } from 'lucide-react';
-import Link from 'next/link';
+import { LogOut } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -48,14 +47,6 @@ export function UserMenu({ user }: { user: SessionUser }) {
           <span className="block truncate text-xs font-normal text-muted-foreground">{user.email}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {user.role === 'admin' && (
-          <DropdownMenuItem asChild>
-            <Link href="/admin/collaborators">
-              <ShieldCheck />
-              Manage collaborators
-            </Link>
-          </DropdownMenuItem>
-        )}
         <DropdownMenuItem onClick={signOut}>
           <LogOut />
           Sign out

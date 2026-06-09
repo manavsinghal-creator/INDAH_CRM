@@ -54,14 +54,18 @@ import { ContactViewDialog } from './contact-view-dialog';
 import { useRouter } from 'next/navigation';
 import { BulkContactUploadDialog } from './bulk-contact-upload-dialog';
 import { cn } from '@/lib/utils';
+import { ContactWhatsAppDialog } from './contact-whatsapp-dialog';
 
-type SortKey = keyof Pick<Contact, 'serialNumber' | 'name' | 'status' | 'budget' | 'city' | 'locationPreference' | 'createdAt' | 'updatedAt' | 'propertyPreference' | 'contactType' | 'referenceContact' | 'isActive'>;
+type SortKey = keyof Pick<Contact, 'serialNumber' | 'name' | 'status' | 'budget' | 'city' | 'locationPreference' | 'createdAt' | 'updatedAt' | 'propertyPreference' | 'contactType' | 'referenceContact' | 'isActive' | 'createdByName'>;
 
 const budgetOrder: Record<Contact['budget'], number> = {
   "<1": 1, "1-3": 2, "3-6": 3, "6-10": 4, ">10": 5
 };
 
 const statusOrder: Record<Contact['status'], number> = { "Cold": 1, "Warm": 2, "Hot": 3 };
+
+const contactCreatorName = (contact: Contact) => contact.createdByName || 'Admin';
+const contactCreatorEmail = (contact: Contact) => contact.createdByEmail || 'manavsinghal@gmail.com';
 
 export function ContactList({ initialContacts, allListings }: { initialContacts: Contact[], allListings: Listing[] }) {
   const [sortKey, setSortKey] = React.useState<SortKey>('serialNumber');
@@ -70,6 +74,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
   const [isFormOpen, setFormOpen] = React.useState(false);
   const [isViewOpen, setViewOpen] = React.useState(false);
   const [isBulkUploadOpen, setBulkUploadOpen] = React.useState(false);
+  const [isWhatsAppOpen, setWhatsAppOpen] = React.useState(false);
   const [activeContact, setActiveContact] = React.useState<Contact | null>(null);
   const [editingContact, setEditingContact] = React.useState<Contact | null>(null);
   const [viewingContact, setViewingContact] = React.useState<Contact | null>(null);
@@ -101,6 +106,11 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
     setViewingContact(contact);
     setViewOpen(true);
   };
+
+  const handleWhatsApp = (contact: Contact) => {
+    setActiveContact(contact);
+    setWhatsAppOpen(true);
+  };
   
   const handleAddNew = () => {
     setEditingContact(null);
@@ -131,6 +141,8 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
         contact.serialNumber.toLowerCase().includes(query) ||
         contact.city?.toLowerCase().includes(query) ||
         contact.contactType?.toLowerCase().includes(query) ||
+        contactCreatorName(contact).toLowerCase().includes(query) ||
+        contactCreatorEmail(contact).toLowerCase().includes(query) ||
         contact.referenceContact?.toLowerCase().includes(query) ||
         contact.propertyPreference?.join(' ').toLowerCase().includes(query)
       );
@@ -144,6 +156,10 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
       else if (sortKey === 'isActive') {
         aValue = a.isActive ?? true;
         bValue = b.isActive ?? true;
+      }
+      else if (sortKey === 'createdByName') {
+        aValue = contactCreatorName(a);
+        bValue = contactCreatorName(b);
       }
       else { aValue = a[sortKey]; bValue = b[sortKey]; }
       
@@ -186,7 +202,76 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
             </div>
         </div>
 
-      <div className="rounded-xl border bg-card text-card-foreground shadow">
+      <div className="space-y-3 md:hidden">
+        {isClient && sortedContacts.map((contact) => (
+          <article key={contact.id} className={cn(
+            'rounded-md border bg-card p-4',
+            contact.isActive === false && 'border-destructive/30 bg-destructive/5',
+          )}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-semibold">{contact.name}</h3>
+                  <Badge variant={contact.status.toLowerCase() as "hot" | "warm" | "cold"}>{contact.status}</Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{contact.serialNumber}</p>
+              </div>
+              <span className="shrink-0 text-sm font-medium">{contact.budget} Cr</span>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="text-xs text-muted-foreground">Type</p>
+                <p>{contact.contactType || '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">City</p>
+                <p>{contact.city || '—'}</p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-xs text-muted-foreground">Location preference</p>
+                <p>{contact.locationPreference || '—'}</p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-xs text-muted-foreground">Added by</p>
+                <p>{contactCreatorName(contact)}</p>
+              </div>
+            </div>
+            <div className="mt-4 flex items-center gap-1 border-t pt-3">
+              <Button variant="ghost" size="icon" onClick={() => handleView(contact)} aria-label={`View ${contact.name}`}>
+                <Eye className="h-4 w-4"/>
+              </Button>
+              <Button variant="ghost" size="icon" onClick={() => handleWhatsApp(contact)} aria-label={`Create WhatsApp draft for ${contact.name}`}>
+                <MessageSquareText className="h-4 w-4 text-emerald-600"/>
+              </Button>
+              <Button variant="ghost" size="icon" asChild>
+                <a href={`mailto:${contact.email}`} aria-label={`Email ${contact.name}`}><Mail className="h-4 w-4" /></a>
+              </Button>
+              <Button variant="ghost" size="icon" onClick={() => handleEdit(contact)} aria-label={`Edit ${contact.name}`}>
+                <Edit className="h-4 w-4" />
+              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="icon" className="ml-auto text-destructive" aria-label={`Delete ${contact.name}`}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                    <AlertDialogDescription>This will permanently delete the contact for {contact.name}.</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => handleDelete(contact.id)} disabled={isPending}>{isPending ? 'Deleting...' : 'Delete'}</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <div className="hidden rounded-xl border bg-card text-card-foreground shadow md:block">
         <div className="relative max-h-[calc(100vh-22rem)] overflow-auto">
           <Table>
             <TableHeader className="sticky top-0 bg-card z-10">
@@ -200,6 +285,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                 <TableHead onClick={() => handleSort('locationPreference')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Location Preference {getSortIcon('locationPreference')}</div></TableHead>
                 <TableHead onClick={() => handleSort('referenceContact')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Reference {getSortIcon('referenceContact')}</div></TableHead>
                 <TableHead className="sticky top-0 bg-card"><div className="flex items-center">Property Preference</div></TableHead>
+                <TableHead onClick={() => handleSort('createdByName')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Added By {getSortIcon('createdByName')}</div></TableHead>
                 <TableHead onClick={() => handleSort('updatedAt')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors w-[150px]"><div className="flex items-center">Last Updated {getSortIcon('updatedAt')}</div></TableHead>
                 <TableHead className="sticky top-0 bg-card text-right w-[150px]">Actions</TableHead>
               </TableRow>
@@ -222,11 +308,18 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                             {contact.propertyPreference?.map(pref => <Badge key={pref} variant="secondary">{pref}</Badge>)}
                         </div>
                     </TableCell>
+                    <TableCell>
+                      <p className="font-medium">{contactCreatorName(contact)}</p>
+                      <p className="text-xs text-muted-foreground">{contactCreatorEmail(contact)}</p>
+                    </TableCell>
                     <TableCell className="text-muted-foreground text-xs">{format(new Date(contact.updatedAt), "dd MMM yyyy")}</TableCell>
                     <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
                         <Button variant="ghost" size="icon" onClick={() => handleView(contact)} aria-label="View Contact">
                         <Eye className="h-4 w-4"/>
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleWhatsApp(contact)} aria-label={`Create WhatsApp draft for ${contact.name}`}>
+                        <MessageSquareText className="h-4 w-4 text-emerald-600"/>
                         </Button>
                         <Button variant="ghost" size="icon" asChild>
                         <a href={`mailto:${contact.email}`} aria-label="Send email"><Mail className="h-4 w-4" /></a>
@@ -267,6 +360,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                             <TableCell><Skeleton className="h-5 w-32"/></TableCell>
                             <TableCell><Skeleton className="h-5 w-24"/></TableCell>
                             <TableCell><Skeleton className="h-5 w-24"/></TableCell>
+                            <TableCell><Skeleton className="h-5 w-24"/></TableCell>
                             <TableCell><div className="flex justify-end gap-2"><Skeleton className="h-8 w-8"/><Skeleton className="h-8 w-8"/></div></TableCell>
                         </TableRow>
                     ))
@@ -278,6 +372,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
       
       <ContactForm isOpen={isFormOpen} onOpenChange={setFormOpen} contact={editingContact} allListings={allListings} />
       {viewingContact && <ContactViewDialog isOpen={isViewOpen} onOpenChange={setViewOpen} contact={viewingContact} allListings={allListings} />}
+      {activeContact && <ContactWhatsAppDialog isOpen={isWhatsAppOpen} onOpenChange={setWhatsAppOpen} contact={activeContact} listings={allListings} />}
       <BulkContactUploadDialog isOpen={isBulkUploadOpen} onOpenChange={setBulkUploadOpen} />
     </div>
   );

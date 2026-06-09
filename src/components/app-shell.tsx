@@ -16,6 +16,7 @@ const navItems = [
   { href: '/partners', label: 'Channel Partners' },
   { href: '/metrics', label: 'Metrics' },
   { href: '/tasks', label: 'Tasks' },
+  { href: '/activity', label: 'Activity Log' },
 ];
 
 function Brand() {

@@ -27,12 +27,6 @@ function firebaseApiKey() {
   return apiKey;
 }
 
-function firebaseProjectId() {
-  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-  if (!projectId) throw new Error('Firebase project ID is not configured.');
-  return projectId;
-}
-
 export async function verifyFirebaseIdToken(idToken: string): Promise<FirebaseAccount | null> {
   const response = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${firebaseApiKey()}`,
@@ -49,42 +43,16 @@ export async function verifyFirebaseIdToken(idToken: string): Promise<FirebaseAc
   return payload.users?.[0] || null;
 }
 
-async function authorizedUserDocument(email: string, idToken: string) {
-  const documentId = encodeURIComponent(normalizeEmail(email));
-  const response = await fetch(
-    `https://firestore.googleapis.com/v1/projects/${firebaseProjectId()}/databases/(default)/documents/authorizedUsers/${documentId}`,
-    {
-      headers: { Authorization: `Bearer ${idToken}` },
-      cache: 'no-store',
-    },
-  );
-
-  if (!response.ok) return null;
-  return response.json();
-}
-
 export async function getAuthorizedUserFromToken(idToken: string): Promise<SessionUser | null> {
   const account = await verifyFirebaseIdToken(idToken);
   if (!account?.email) return null;
 
   const email = normalizeEmail(account.email);
-  if (isPrimaryAdmin(email)) {
-    return {
-      email,
-      name: account.displayName || 'Admin',
-      picture: account.photoUrl,
-      role: 'admin',
-    };
-  }
-
-  const document = await authorizedUserDocument(email, idToken);
-  if (!document) return null;
-
   return {
     email,
-    name: account.displayName || email,
+    name: account.displayName || (isPrimaryAdmin(email) ? 'Admin' : email),
     picture: account.photoUrl,
-    role: document.fields?.role?.stringValue === 'admin' ? 'admin' : 'collaborator',
+    role: isPrimaryAdmin(email) ? 'admin' : 'collaborator',
   };
 }
 
@@ -113,22 +81,4 @@ export async function requireAdmin() {
   const user = await requireAuthorizedUser();
   if (user.role !== 'admin') throw new Error('Admin access required');
   return user;
-}
-
-export async function firestoreRequest(path: string, init: RequestInit = {}) {
-  const idToken = await getSessionToken();
-  if (!idToken) throw new Error('Unauthorized');
-
-  return fetch(
-    `https://firestore.googleapis.com/v1/projects/${firebaseProjectId()}/databases/(default)/documents/${path}`,
-    {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${idToken}`,
-        'Content-Type': 'application/json',
-        ...init.headers,
-      },
-      cache: 'no-store',
-    },
-  );
 }

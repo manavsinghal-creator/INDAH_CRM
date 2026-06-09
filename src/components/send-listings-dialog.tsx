@@ -24,8 +24,8 @@ import type { Listing, Contact, ChannelPartner } from '@/lib/types';
 import { getContacts, getChannelPartners } from '@/app/actions';
 import { Label } from './ui/label';
 import { Skeleton } from './ui/skeleton';
-import { Copy } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { MessageCircle } from 'lucide-react';
+import { WhatsAppDraftDialog } from './whatsapp-draft-dialog';
 
 type Recipient = (Contact | ChannelPartner) & { type: 'Contact' | 'Channel Partner' };
 
@@ -46,7 +46,7 @@ export function SendListingsDialog({
   const [partners, setPartners] = React.useState<ChannelPartner[]>([]);
   const [selectedRecipientId, setSelectedRecipientId] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
-  const { toast } = useToast();
+  const [isDraftOpen, setDraftOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (isOpen) {
@@ -70,43 +70,21 @@ export function SendListingsDialog({
     ...partners.map(p => ({ ...p, type: 'Channel Partner' as const })),
   ];
 
-  const handleSend = () => {
-    if (listings.length === 0) return;
-
-    let recipientName = 'Valued Client';
-
-    if (selectedRecipientId) {
-        const selected = allRecipients.find(r => r.id === selectedRecipientId);
-        if (selected) {
-            recipientName = selected.name;
-        }
-    }
-
-    const listingsText = listings.map(l => 
-        `*${l.listingName}* (ID: ${l.listingId})\n- Type: ${l.bhkConfiguration} ${l.propertyType}\n- Location: ${l.location}\n- Price: Rs. ${l.basePrice} Cr.\n- More Info: ${l.listingUrl || l.externalPublicLink || '(URL not available)'}`
-    ).join('\n\n');
-
-    const message = `Hello ${recipientName},\n\nAs per our discussion, here are some properties I thought you might be interested in. Please find the details below:\n\n${listingsText}\n\nLet me know if any of these catch your eye. I look forward to hearing from you.\n\nBest Regards,\nINDAH LIVING`;
-    
-    navigator.clipboard.writeText(message).catch(console.error);
-    toast({ title: 'Copied', description: 'Listings copied to clipboard.' });
-    onSendSuccess();
-    onOpenChange(false);
-  };
-
   const handleRecipientChange = (recipientId: string) => {
       setSelectedRecipientId(recipientId);
   };
 
   const isSendDisabled = !selectedRecipientId;
+  const selectedRecipient = allRecipients.find((recipient) => recipient.id === selectedRecipientId);
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Copy Listings for Recipient</DialogTitle>
+          <DialogTitle>Create WhatsApp Draft</DialogTitle>
           <DialogDescription>
-            Select a recipient to generate text for the {listings.length} selected listings.
+            Select a recipient for the {listings.length} selected listings.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
@@ -148,12 +126,30 @@ export function SendListingsDialog({
           <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSend} disabled={isSendDisabled}>
-            <Copy className="mr-2 h-4 w-4" />
-            Copy Details
+          <Button onClick={() => setDraftOpen(true)} disabled={isSendDisabled}>
+            <MessageCircle className="mr-2 h-4 w-4" />
+            Preview Draft
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    {isDraftOpen && selectedRecipient && (
+      <WhatsAppDraftDialog
+        isOpen={isDraftOpen}
+        onOpenChange={setDraftOpen}
+        onOpened={() => {
+          onSendSuccess();
+          onOpenChange(false);
+        }}
+        recipient={{
+          id: selectedRecipient.id,
+          name: selectedRecipient.name,
+          phone: selectedRecipient.phone,
+          type: selectedRecipient.type === 'Contact' ? 'contact' : 'channelPartner',
+        }}
+        listings={listings}
+      />
+    )}
+    </>
   );
 }
