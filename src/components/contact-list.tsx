@@ -2,7 +2,7 @@
 'use client';
 
 import * as React from 'react';
-import type { Contact, Listing } from '@/lib/types';
+import { leadStageOptions, type Contact, type LeadStage, type Listing } from '@/lib/types';
 import {
   Table,
   TableHeader,
@@ -55,8 +55,9 @@ import { useRouter } from 'next/navigation';
 import { BulkContactUploadDialog } from './bulk-contact-upload-dialog';
 import { cn } from '@/lib/utils';
 import { ContactWhatsAppDialog } from './contact-whatsapp-dialog';
+import { getContactLeadStage } from '@/lib/crm-status';
 
-type SortKey = keyof Pick<Contact, 'serialNumber' | 'name' | 'status' | 'budget' | 'city' | 'locationPreference' | 'createdAt' | 'updatedAt' | 'propertyPreference' | 'contactType' | 'referenceContact' | 'isActive' | 'createdByName'>;
+type SortKey = keyof Pick<Contact, 'serialNumber' | 'name' | 'status' | 'leadStage' | 'budget' | 'city' | 'locationPreference' | 'createdAt' | 'updatedAt' | 'propertyPreference' | 'contactType' | 'referenceContact' | 'isActive' | 'createdByName'>;
 
 const budgetOrder: Record<Contact['budget'], number> = {
   "<1": 1, "1-3": 2, "3-6": 3, "6-10": 4, ">10": 5
@@ -71,6 +72,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
   const [sortKey, setSortKey] = React.useState<SortKey>('serialNumber');
   const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('asc');
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [stageFilter, setStageFilter] = React.useState<'All' | LeadStage>('All');
   const [isFormOpen, setFormOpen] = React.useState(false);
   const [isViewOpen, setViewOpen] = React.useState(false);
   const [isBulkUploadOpen, setBulkUploadOpen] = React.useState(false);
@@ -132,11 +134,12 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
   const sortedContacts = React.useMemo(() => {
     return [...initialContacts].filter(contact => {
       const query = searchQuery.toLowerCase();
-      return (
+      const matchesSearch = (
         contact.name.toLowerCase().includes(query) ||
         (contact.email && contact.email.toLowerCase().includes(query)) ||
         contact.phone.includes(query) ||
         contact.status.toLowerCase().includes(query) ||
+        getContactLeadStage(contact).toLowerCase().includes(query) ||
         contact.locationPreference?.toLowerCase().includes(query) ||
         contact.serialNumber.toLowerCase().includes(query) ||
         contact.city?.toLowerCase().includes(query) ||
@@ -146,11 +149,15 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
         contact.referenceContact?.toLowerCase().includes(query) ||
         contact.propertyPreference?.join(' ').toLowerCase().includes(query)
       );
+      const matchesStage = stageFilter === 'All'
+        || (contact.contactType === 'Buyer' && getContactLeadStage(contact) === stageFilter);
+      return matchesSearch && matchesStage;
     }).sort((a, b) => {
       let aValue: any, bValue: any;
 
       if(sortKey === 'budget') { aValue = budgetOrder[a.budget]; bValue = budgetOrder[b.budget]; } 
       else if (sortKey === 'status') { aValue = statusOrder[a.status]; bValue = statusOrder[b.status]; } 
+      else if (sortKey === 'leadStage') { aValue = getContactLeadStage(a); bValue = getContactLeadStage(b); }
       else if (sortKey === 'serialNumber') { aValue = parseInt(a.serialNumber.substring(1)); bValue = parseInt(b.serialNumber.substring(1)); } 
       else if (sortKey === 'createdAt' || sortKey === 'updatedAt') { aValue = new Date(a[sortKey]).getTime(); bValue = new Date(b[sortKey]).getTime(); }
       else if (sortKey === 'isActive') {
@@ -169,7 +176,15 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
       if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [initialContacts, sortKey, sortOrder, searchQuery]);
+  }, [initialContacts, sortKey, sortOrder, searchQuery, stageFilter]);
+
+  const pipelineCounts = React.useMemo(() => {
+    const counts = Object.fromEntries(leadStageOptions.map((stage) => [stage, 0])) as Record<LeadStage, number>;
+    initialContacts.forEach((contact) => {
+      if (contact.contactType === 'Buyer') counts[getContactLeadStage(contact)] += 1;
+    });
+    return counts;
+  }, [initialContacts]);
   
   const getSortIcon = (key: SortKey) => {
     if (sortKey !== key) return <ArrowUpDown className="ml-2 h-4 w-4 opacity-30" />;
@@ -202,6 +217,32 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
             </div>
         </div>
 
+      <section aria-label="Buyer lead pipeline" className="border-y bg-muted/20 py-3">
+        <div className="flex gap-2 overflow-x-auto px-1 pb-1">
+          <Button
+            type="button"
+            size="sm"
+            variant={stageFilter === 'All' ? 'default' : 'outline'}
+            onClick={() => setStageFilter('All')}
+            className="shrink-0"
+          >
+            All Contacts <Badge variant="secondary" className="ml-2">{initialContacts.length}</Badge>
+          </Button>
+          {leadStageOptions.map((stage) => (
+            <Button
+              key={stage}
+              type="button"
+              size="sm"
+              variant={stageFilter === stage ? 'default' : 'outline'}
+              onClick={() => setStageFilter(stage)}
+              className="shrink-0"
+            >
+              {stage} <Badge variant="secondary" className="ml-2">{pipelineCounts[stage]}</Badge>
+            </Button>
+          ))}
+        </div>
+      </section>
+
       <div className="space-y-3 md:hidden">
         {isClient && sortedContacts.map((contact) => (
           <article key={contact.id} className={cn(
@@ -213,6 +254,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-semibold">{contact.name}</h3>
                   <Badge variant={contact.status.toLowerCase() as "hot" | "warm" | "cold"}>{contact.status}</Badge>
+                  {contact.contactType === 'Buyer' && <Badge variant="outline">{getContactLeadStage(contact)}</Badge>}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">{contact.serialNumber}</p>
               </div>
@@ -279,6 +321,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                 <TableHead onClick={() => handleSort('serialNumber')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors w-[100px]"><div className="flex items-center">Serial No. {getSortIcon('serialNumber')}</div></TableHead>
                 <TableHead onClick={() => handleSort('name')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Name {getSortIcon('name')}</div></TableHead>
                 <TableHead onClick={() => handleSort('status')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors w-[120px]"><div className="flex items-center">Status {getSortIcon('status')}</div></TableHead>
+                <TableHead onClick={() => handleSort('leadStage')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Pipeline {getSortIcon('leadStage')}</div></TableHead>
                 <TableHead onClick={() => handleSort('budget')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Budget (Crores) {getSortIcon('budget')}</div></TableHead>
                 <TableHead onClick={() => handleSort('city')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">City {getSortIcon('city')}</div></TableHead>
                 <TableHead onClick={() => handleSort('contactType')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Contact Type {getSortIcon('contactType')}</div></TableHead>
@@ -298,6 +341,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                     <TableCell className="font-mono text-muted-foreground">{contact.serialNumber}</TableCell>
                     <TableCell className="font-medium">{contact.name}</TableCell>
                     <TableCell><Badge variant={contact.status.toLowerCase() as "hot" | "warm" | "cold"}>{contact.status}</Badge></TableCell>
+                    <TableCell>{contact.contactType === 'Buyer' ? <Badge variant="outline">{getContactLeadStage(contact)}</Badge> : '—'}</TableCell>
                     <TableCell>{contact.budget}</TableCell>
                     <TableCell>{contact.city}</TableCell>
                     <TableCell>{contact.contactType}</TableCell>
@@ -370,7 +414,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
         </div>
       </div>
       
-      <ContactForm isOpen={isFormOpen} onOpenChange={setFormOpen} contact={editingContact} allListings={allListings} />
+      <ContactForm isOpen={isFormOpen} onOpenChange={setFormOpen} contact={editingContact} allContacts={initialContacts} allListings={allListings} />
       {viewingContact && <ContactViewDialog isOpen={isViewOpen} onOpenChange={setViewOpen} contact={viewingContact} allListings={allListings} />}
       {activeContact && <ContactWhatsAppDialog isOpen={isWhatsAppOpen} onOpenChange={setWhatsAppOpen} contact={activeContact} listings={allListings} />}
       <BulkContactUploadDialog isOpen={isBulkUploadOpen} onOpenChange={setBulkUploadOpen} />

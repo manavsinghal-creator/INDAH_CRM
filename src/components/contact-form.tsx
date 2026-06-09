@@ -38,6 +38,7 @@ import {
   budgetOptions,
   statusOptions,
   contactTypeOptions,
+  leadStageOptions,
   propertyTypeOptions,
   Listing,
 } from '@/lib/types';
@@ -49,11 +50,15 @@ import { useRouter } from 'next/navigation';
 import { Checkbox } from './ui/checkbox';
 import { Switch } from './ui/switch';
 import { Label } from './ui/label';
+import { Alert, AlertDescription, AlertTitle } from './ui/alert';
+import { AlertTriangle } from 'lucide-react';
+import { findContactDuplicates, type ContactDuplicate } from '@/lib/contact-duplicates';
 
 interface ContactFormProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   contact?: Contact | null;
+  allContacts: Contact[];
   allListings: Listing[];
 }
 
@@ -65,6 +70,7 @@ const defaultFormValues: Partial<ContactFormData> = {
   status: "Cold",
   city: '',
   contactType: undefined,
+  leadStage: 'New',
   locationPreference: '',
   propertyPreference: [],
   offeredListings: [],
@@ -77,6 +83,7 @@ export function ContactForm({
   isOpen,
   onOpenChange,
   contact,
+  allContacts,
   allListings,
 }: ContactFormProps) {
   const [isPending, startTransition] = React.useTransition();
@@ -99,6 +106,7 @@ export function ContactForm({
           status: contact.status,
           city: contact.city || '',
           contactType: contact.contactType || undefined,
+          leadStage: contact.leadStage || 'New',
           locationPreference: contact.locationPreference || '',
           propertyPreference: contact.propertyPreference || [],
           offeredListings: contact.offeredListings || [],
@@ -113,6 +121,13 @@ export function ContactForm({
     }
   }, [isOpen, contact, form]);
 
+  const phone = form.watch('phone');
+  const email = form.watch('email');
+  const duplicates = React.useMemo(
+    () => findContactDuplicates(allContacts, { phone, email }, contact?.id),
+    [allContacts, contact?.id, email, phone]
+  );
+
   const onSubmit = (data: ContactFormData) => {
     startTransition(async () => {
       const action = contact ? updateContact(contact.id, data) : addContact(data);
@@ -126,9 +141,12 @@ export function ContactForm({
         onOpenChange(false);
         router.refresh();
       } else {
+        const serverDuplicates = result.error?.duplicates as ContactDuplicate[] | undefined;
         toast({
-          title: 'Error',
-          description: 'Something went wrong. Please try again.',
+          title: serverDuplicates?.length ? 'Duplicate Contact' : 'Error',
+          description: serverDuplicates?.length
+            ? `${serverDuplicates[0].name} already uses this ${serverDuplicates[0].matchedFields.join(' and ')}.`
+            : result.error?._form?.[0] || 'Something went wrong. Please try again.',
           variant: 'destructive',
         });
       }
@@ -167,6 +185,19 @@ export function ContactForm({
         <ScrollArea className="max-h-[70vh] pr-6">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            {duplicates.length > 0 && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Possible duplicate contact</AlertTitle>
+                <AlertDescription>
+                  {duplicates.map((duplicate) => (
+                    <span key={duplicate.id} className="block">
+                      {duplicate.name} ({duplicate.serialNumber}) already has this {duplicate.matchedFields.join(' and ')}.
+                    </span>
+                  ))}
+                </AlertDescription>
+              </Alert>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField control={form.control} name="name" render={({ field }) => (
                 <FormItem><FormLabel>Name</FormLabel><FormControl><Input placeholder="e.g. John Doe" {...field} /></FormControl><FormMessage /></FormItem>
@@ -198,6 +229,13 @@ export function ContactForm({
                 <FormItem><FormLabel>Contact Type</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select contact type" /></SelectTrigger></FormControl>
                     <SelectContent>{contactTypeOptions.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent>
+                  </Select><FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="leadStage" render={({ field }) => (
+                <FormItem><FormLabel>Lead Pipeline Stage</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select pipeline stage" /></SelectTrigger></FormControl>
+                    <SelectContent>{leadStageOptions.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent>
                   </Select><FormMessage />
                 </FormItem>
               )} />
@@ -314,7 +352,7 @@ export function ContactForm({
 
             <DialogFooter className="pt-6 sticky bottom-0 bg-card -mx-6 px-6 pb-6 -mb-6">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-              <Button type="submit" disabled={isPending}>
+              <Button type="submit" disabled={isPending || duplicates.length > 0}>
                 {isPending ? 'Saving...' : contact ? 'Save Changes' : 'Add Contact'}
               </Button>
             </DialogFooter>

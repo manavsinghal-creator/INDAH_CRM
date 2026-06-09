@@ -11,7 +11,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import type { Contact, Listing } from '@/lib/types';
+import type { Contact, Listing, MatchMetadata } from '@/lib/types';
+import type { PropertyMatcherOutput } from '@/ai/flows/property-matcher';
 import { useToast } from '@/hooks/use-toast';
 import { Sparkles, Copy, Check, MessageCircle } from 'lucide-react';
 import { Skeleton } from './ui/skeleton';
@@ -19,6 +20,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { WhatsAppDraftDialog } from './whatsapp-draft-dialog';
+import { MatchSourceBadge } from './match-source-badge';
+
+type SuggestedProperty = PropertyMatcherOutput['suggestedProperties'][number];
 
 interface PropertyMatchDialogProps {
   isOpen: boolean;
@@ -30,10 +34,11 @@ interface PropertyMatchDialogProps {
 export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings }: PropertyMatchDialogProps) {
   const [isMatching, startTransition] = React.useTransition();
   const [recommendations, setRecommendations] = React.useState('');
-  const [suggestedProperties, setSuggestedProperties] = React.useState<any[]>([]);
+  const [suggestedProperties, setSuggestedProperties] = React.useState<SuggestedProperty[]>([]);
+  const [matchMetadata, setMatchMetadata] = React.useState<MatchMetadata | null>(null);
   const [draftListing, setDraftListing] = React.useState<(Listing & { matchReason?: string }) | null>(null);
   const { toast } = useToast();
-  const findMatchedListing = (property: any) => allListings.find((listing) =>
+  const findMatchedListing = (property: SuggestedProperty) => allListings.find((listing) =>
     listing.id === property.id
     || listing.listingId === property.id
     || listing.listingName.toLowerCase() === String(property.name || '').toLowerCase()
@@ -44,6 +49,7 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
     startTransition(async () => {
       setRecommendations('');
       setSuggestedProperties([]);
+      setMatchMetadata(null);
       try {
           const response = await fetch('/api/ai/property-matches', {
               method: 'POST',
@@ -54,6 +60,7 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
           if (result.success && result.data) {
             setRecommendations(result.data.recommendations);
             setSuggestedProperties(result.data.suggestedProperties || []);
+            setMatchMetadata(result.data.matchMetadata);
           } else {
             toast({
               title: 'Matching Failed',
@@ -78,6 +85,7 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
         // Reset state on close
         setRecommendations('');
         setSuggestedProperties([]);
+        setMatchMetadata(null);
     }
   }, [isOpen, handleMatch]);
 
@@ -103,7 +111,10 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
             AI Property Matcher
           </DialogTitle>
           <DialogDescription>
-            AI-powered property recommendations for {contact.name}.
+            <span className="flex flex-wrap items-center gap-2">
+              Property recommendations for {contact.name}.
+              <MatchSourceBadge metadata={matchMetadata} />
+            </span>
           </DialogDescription>
         </DialogHeader>
         <div className="py-2">
@@ -125,7 +136,7 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
                     
                     {recommendations && (
                         <div className="space-y-2">
-                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">AI Analysis & Recommendations</h4>
+                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Match Analysis & Recommendations</h4>
                             <Textarea
                                 id="property-recommendations"
                                 readOnly
@@ -139,7 +150,7 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
                         <div className="space-y-3">
                             <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Matched Listings</h4>
                             <div className="grid grid-cols-1 gap-4">
-                                {suggestedProperties.map((property: any) => (
+                                {suggestedProperties.map((property) => (
                                     <Card key={property.id} className="overflow-hidden border border-slate-100 hover:border-slate-200 transition-colors">
                                         <CardHeader className="bg-slate-50/50 pb-3">
                                             <div className="flex items-center justify-between gap-4">

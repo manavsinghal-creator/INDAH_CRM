@@ -24,6 +24,7 @@ import { Mail, Users, Check, AlertTriangle, MessageCircle } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from './ui/badge';
 import { WhatsAppDraftDialog } from './whatsapp-draft-dialog';
+import { MatchSourceBadge } from './match-source-badge';
 
 
 interface ContactMatchDialogProps {
@@ -94,6 +95,7 @@ export function ContactMatchDialog({ isOpen, onOpenChange, listingId }: ContactM
                     <span className="flex items-center gap-2 mt-2">
                         <Users className="h-4 w-4" />
                         {matchCount} {matchCount === 1 ? 'match found' : 'matches found'}.
+                        <MatchSourceBadge metadata={matchData.matchMetadata} />
                     </span>
                 )}
              </DialogDescription>

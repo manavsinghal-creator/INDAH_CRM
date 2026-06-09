@@ -27,6 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import { MoreHorizontal, Edit, Trash2, Eye, Copy, ExternalLink, Link as LinkIcon, Check } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { getListingAvailability, isListingAvailable } from '@/lib/crm-status';
 
 interface ListingCardProps {
   listing: Listing;
@@ -72,10 +73,11 @@ export function ListingCard({
       })
   }
   
-  const isActive = listing.isActive ?? true;
+  const isAvailable = isListingAvailable(listing);
+  const availability = getListingAvailability(listing);
 
   return (
-    <Card className={cn("flex flex-col", !isActive && "bg-destructive/10 text-destructive-foreground")}>
+    <Card className={cn("flex flex-col", !isAvailable && "bg-muted/50 text-muted-foreground")}>
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <Checkbox
@@ -83,10 +85,11 @@ export function ListingCard({
             onCheckedChange={(checked) => onSelect(listing.id, !!checked)}
             aria-label={`Select listing ${listing.listingId}`}
             className="mt-1"
+            disabled={!isAvailable}
           />
           <div className="flex-1">
-            <CardTitle className={cn("text-base", !isActive && "text-foreground")}>{listing.listingName}</CardTitle>
-            <CardDescription className={cn(!isActive && "text-muted-foreground/80")}>{listing.location}</CardDescription>
+            <CardTitle className="text-base text-foreground">{listing.listingName}</CardTitle>
+            <CardDescription>{listing.location}</CardDescription>
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -120,12 +123,11 @@ export function ListingCard({
       </CardHeader>
       <CardContent className="space-y-3 text-sm flex-grow">
         <div className="flex justify-between items-center">
-            {isActive ? (
-                <Badge variant="outline">{listing.bhkConfiguration}</Badge>
-            ) : (
-                <Badge variant="destructive">Inactive</Badge>
-            )}
-            <div className={cn("font-bold text-lg text-primary", !isActive && "text-foreground")}>₹{listing.basePrice} Cr.</div>
+            <div className="flex flex-wrap gap-1">
+              <Badge variant="outline">{listing.bhkConfiguration}</Badge>
+              <Badge variant={isAvailable ? 'default' : 'outline'}>{availability}</Badge>
+            </div>
+            <div className={cn("font-bold text-lg text-primary", !isAvailable && "text-foreground")}>₹{listing.basePrice} Cr.</div>
         </div>
         <div className="space-y-1 rounded-md border p-2 bg-background/50">
             <DetailItem label="Listing ID" value={listing.listingId} />

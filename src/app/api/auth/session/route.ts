@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 
 import {
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE_SECONDS,
 } from '@/lib/auth-config';
 import { getAuthorizedUserFromToken } from '@/lib/auth-server';
+import { db, isCrmDatabaseConfigured } from '@/lib/firebase';
 
 const SessionSchema = z.object({ idToken: z.string().min(1) });
 
@@ -21,6 +23,26 @@ export async function POST(request: Request) {
       { error: 'This Google account has not been approved for CRM access.' },
       { status: 403 },
     );
+  }
+
+  if (isCrmDatabaseConfigured) {
+    try {
+      await addDoc(collection(db, 'activityLogs'), {
+        userEmail: user.email,
+        userName: user.name,
+        action: 'signedIn',
+        entityType: 'session',
+        entityId: user.email,
+        entityLabel: user.email,
+        changes: [
+          { field: 'role', before: '—', after: user.role },
+          { field: 'sessionDuration', before: '—', after: '1 hour' },
+        ],
+        createdAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error('Failed to record sign-in activity', error);
+    }
   }
 
   const response = NextResponse.json({ user });

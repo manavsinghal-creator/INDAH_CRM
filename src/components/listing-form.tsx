@@ -46,6 +46,7 @@ import {
   furnishingOptions,
   GenerateDescriptionInputSchema,
   uspTagOptions,
+  listingAvailabilityOptions,
 } from '@/lib/types';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
@@ -53,8 +54,8 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
 import { useRouter } from 'next/navigation';
-import { Switch } from './ui/switch';
 import { Sparkles } from 'lucide-react';
+import { getListingAvailability } from '@/lib/crm-status';
 
 interface ListingFormProps {
   isOpen: boolean;
@@ -113,6 +114,7 @@ const defaultValues: ListingFormData = {
     usps: [],
     notes: '',
     additionalActions: [],
+    availabilityStatus: 'Available',
     isActive: true,
 };
 
@@ -187,7 +189,13 @@ export function ListingForm({
     if (isOpen) {
       if (listing) {
         const isDuplicate = !listing.id;
-        const initialData = { ...defaultValues, ...listing, listingId: isDuplicate ? '' : listing.listingId, isActive: listing.isActive ?? true };
+        const initialData = {
+          ...defaultValues,
+          ...listing,
+          listingId: isDuplicate ? '' : listing.listingId,
+          availabilityStatus: getListingAvailability(listing),
+          isActive: getListingAvailability(listing) === 'Available',
+        };
         form.reset(initialData);
       } else {
         form.reset(defaultValues);
@@ -197,7 +205,8 @@ export function ListingForm({
 
   const onSubmit = (data: ListingFormData) => {
     startTransition(async () => {
-      const action = listing?.id ? updateListing(listing.id, data) : addListing(data);
+      const listingData = { ...data, isActive: data.availabilityStatus === 'Available' };
+      const action = listing?.id ? updateListing(listing.id, listingData) : addListing(listingData);
       const result = await action;
 
       if (result.success && result.listing) {
@@ -274,16 +283,14 @@ export function ListingForm({
                     {listing?.id ? `Viewing and editing details for ${listing.projectName}.` : 'Fill in the details for the new property listing.'}
                 </DialogDescription>
               </div>
-              <FormField
-                control={form.control}
-                name="isActive"
-                render={({ field }) => (
-                  <FormItem className="flex items-center space-x-2">
-                    <Switch id="isActive" checked={field.value} onCheckedChange={field.onChange} />
-                    <Label htmlFor="isActive" className="text-sm font-medium">{field.value ? 'Active' : 'Inactive'}</Label>
-                  </FormItem>
-                )}
-              />
+              <FormField control={form.control} name="availabilityStatus" render={({ field }) => (
+                <div className="min-w-52 space-y-2"><Label>Availability</Label>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{listingAvailabilityOptions.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              )} />
            </div>
         </DialogHeader>
         <ScrollArea className="max-h-[80vh] pr-6">
