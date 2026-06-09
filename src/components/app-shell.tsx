@@ -59,7 +59,7 @@ function Footer() {
             ))}
           </div>
         </div>
-        <p>&copy; RealConnect by INDAH. All rights reserved. (v8)</p>
+        <p>&copy; RealConnect by INDAH. All rights reserved. (v9)</p>
       </div>
     </footer>
   );
