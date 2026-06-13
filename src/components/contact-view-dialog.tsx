@@ -22,6 +22,7 @@ import { PropertyMatchDialog } from './property-match-dialog';
 import { MessageCircle, Sparkles } from 'lucide-react';
 import { ContactWhatsAppDialog } from './contact-whatsapp-dialog';
 import { getContactLeadStage } from '@/lib/crm-status';
+import { LeadStageBadge } from './lead-stage-badge';
 
 interface ContactViewDialogProps {
   isOpen: boolean;
@@ -89,7 +90,7 @@ export function ContactViewDialog({ isOpen, onOpenChange, contact, allListings }
                     <Badge variant={contact.status.toLowerCase() as any} className="w-fit">{contact.status}</Badge>
                 </DetailItem>
                 <DetailItem label="Pipeline Stage">
-                    <Badge variant="outline" className="w-fit">{getContactLeadStage(contact)}</Badge>
+                    <LeadStageBadge stage={getContactLeadStage(contact)} className="w-fit" />
                 </DetailItem>
             </div>
             
@@ -110,6 +111,19 @@ export function ContactViewDialog({ isOpen, onOpenChange, contact, allListings }
                         <div className="flex flex-wrap gap-2">
                             {contact.propertyPreference.map(pref => (
                                 <Badge key={pref} variant="outline">{pref}</Badge>
+                            ))}
+                        </div>
+                    </DetailItem>
+                </>
+            )}
+
+            {contact.requirementPurpose && contact.requirementPurpose.length > 0 && (
+                <>
+                    <Separator/>
+                    <DetailItem label="Requirement Purpose">
+                        <div className="flex flex-wrap gap-2">
+                            {contact.requirementPurpose.map(purpose => (
+                                <Badge key={purpose} variant="secondary">{purpose}</Badge>
                             ))}
                         </div>
                     </DetailItem>

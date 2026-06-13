@@ -41,7 +41,8 @@ function normalizeCriteria(input: QuickCriteria): QuickCriteria {
 
 function toMatchedListing({ listing, localScore, keyFitFactors }: RankedListing) {
   return {
-    listingId: listing.id,
+    recordId: listing.id,
+    listingId: listing.listingId || '',
     listingName: listing.listingName,
     location: listing.location,
     bhkConfiguration: listing.bhkConfiguration,

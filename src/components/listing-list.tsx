@@ -38,6 +38,7 @@ import {
   ExternalLink,
   List,
   LayoutGrid,
+  Sparkles,
 } from 'lucide-react';
 import { deleteListing } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
@@ -64,6 +65,8 @@ import { ListingCard } from './listing-card';
 import { cn } from '@/lib/utils';
 import { QuickMatchDialog } from './quick-match-dialog';
 import { getListingAvailability, isListingAvailable } from '@/lib/crm-status';
+import { ContactMatchDialog } from './contact-match-dialog';
+import { RefreshButton } from './refresh-button';
 
 
 type SortKey = keyof Pick<Listing, 'listingId' | 'listingName' | 'projectName' | 'propertyType' | 'location' | 'bhkConfiguration' | 'carpetArea' | 'builtUpArea' | 'projectStatus' | 'availabilityStatus' | 'basePrice' | 'pricePerSqFt' | 'totalUnits' | 'availableUnits' | 'plotArea' | 'furnishing' | 'websiteStatus' | 'exclusiveMandate' | 'updatedAt' | 'externalPublicLink' | 'isActive'>;
@@ -78,8 +81,10 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
   const [isFormOpen, setFormOpen] = React.useState(false);
   const [isViewOpen, setViewOpen] = React.useState(false);
   const [isSendDialogOpen, setSendDialogOpen] = React.useState(false);
+  const [isContactMatchOpen, setContactMatchOpen] = React.useState(false);
   const [editingListing, setEditingListing] = React.useState<Listing | null>(null);
   const [viewingListing, setViewingListing] = React.useState<Listing | null>(null);
+  const [matchingListing, setMatchingListing] = React.useState<Listing | null>(null);
   const [isPending, startTransition] = React.useTransition();
   const [isClient, setIsClient] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<ViewMode>('grid');
@@ -108,6 +113,11 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
   const handleView = (listing: Listing) => {
     setViewingListing(listing);
     setViewOpen(true);
+  };
+
+  const handleContactMatch = (listing: Listing) => {
+    setMatchingListing(listing);
+    setContactMatchOpen(true);
   };
   
   const handleDuplicate = (listing: Listing) => {
@@ -258,6 +268,7 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
+                <RefreshButton className="w-full md:w-auto" />
             </div>
             <div className="flex flex-wrap gap-2 items-center">
                 <Button onClick={handleAddNew} variant="default" className="shadow-sm">
@@ -412,6 +423,16 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
                               <Button variant="ghost" size="icon" onClick={() => handleView(listing)} aria-label="View Listing">
                                   <Eye className="h-4 w-4" />
                               </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleContactMatch(listing)}
+                                disabled={!isListingAvailable(listing)}
+                                aria-label={`Find matching contacts for ${listing.listingName}`}
+                                title="Find matching contacts"
+                              >
+                                <Sparkles className="h-4 w-4 text-primary" />
+                              </Button>
                               <DropdownMenu>
                               <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
@@ -450,6 +471,7 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
                 isSelected={selectedListings.includes(listing.id)}
                 onSelect={handleSelectListing}
                 onView={handleView}
+                onMatch={handleContactMatch}
                 onEdit={handleEdit}
                 onDuplicate={handleDuplicate}
                 onDelete={handleDelete}
@@ -460,6 +482,7 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
       
       <ListingForm isOpen={isFormOpen} onOpenChange={setFormOpen} listing={editingListing} />
       {viewingListing && <ListingViewDialog isOpen={isViewOpen} onOpenChange={setViewOpen} listing={viewingListing} onDuplicate={handleDuplicate} />}
+      {matchingListing && <ContactMatchDialog isOpen={isContactMatchOpen} onOpenChange={setContactMatchOpen} listingId={matchingListing.id} />}
       <SendListingsDialog 
           isOpen={isSendDialogOpen} 
           onOpenChange={setSendDialogOpen} 

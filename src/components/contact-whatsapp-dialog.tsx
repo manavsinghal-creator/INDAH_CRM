@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { MessageCircle } from 'lucide-react';
+import { Mail, MessageCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -17,6 +17,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Contact, Listing } from '@/lib/types';
 import { WhatsAppDraftDialog } from '@/components/whatsapp-draft-dialog';
 import { isListingAvailable } from '@/lib/crm-status';
+import { EmailDraftDialog } from './email-draft-dialog';
+import { Label } from './ui/label';
+import { markContactPropertiesShared } from '@/app/actions';
 
 interface ContactWhatsAppDialogProps {
   isOpen: boolean;
@@ -33,6 +36,8 @@ export function ContactWhatsAppDialog({
 }: ContactWhatsAppDialogProps) {
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [isDraftOpen, setDraftOpen] = React.useState(false);
+  const [isEmailOpen, setEmailOpen] = React.useState(false);
+  const [updatePipeline, setUpdatePipeline] = React.useState(true);
 
   React.useEffect(() => {
     if (isOpen) setSelectedIds(contact.offeredListings || []);
@@ -45,6 +50,14 @@ export function ContactWhatsAppDialog({
     setSelectedIds((current) => current.includes(id)
       ? current.filter((listingId) => listingId !== id)
       : [...current, id]);
+  };
+  const handleShared = () => {
+    void markContactPropertiesShared(
+      contact.id,
+      selectedListings.map((listing) => listing.id),
+      selectedListings.map((listing) => `${listing.listingId || 'Not assigned'} - ${listing.listingName}`),
+      updatePipeline
+    );
   };
 
   return (
@@ -82,9 +95,17 @@ export function ContactWhatsAppDialog({
               )}
             </div>
           </ScrollArea>
+          <div className="flex items-center gap-2 border-t pt-3">
+            <Checkbox id="contact-share-update-pipeline" checked={updatePipeline} onCheckedChange={(checked) => setUpdatePipeline(checked === true)} />
+            <Label htmlFor="contact-share-update-pipeline" className="text-sm font-normal">Update pipeline to Property Shared after opening a draft</Label>
+          </div>
           <DialogFooter>
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
               Cancel
+            </Button>
+            <Button type="button" variant="outline" disabled={!contact.email || selectedListings.length === 0} onClick={() => setEmailOpen(true)}>
+              <Mail className="mr-2 h-4 w-4" />
+              Email ({selectedListings.length})
             </Button>
             <Button type="button" disabled={selectedListings.length === 0} onClick={() => setDraftOpen(true)}>
               <MessageCircle className="mr-2 h-4 w-4" />
@@ -100,6 +121,16 @@ export function ContactWhatsAppDialog({
           onOpenChange={setDraftOpen}
           recipient={{ id: contact.id, name: contact.name, phone: contact.phone, type: 'contact' }}
           listings={selectedListings}
+          onOpened={handleShared}
+        />
+      )}
+      {isEmailOpen && contact.email && (
+        <EmailDraftDialog
+          isOpen={isEmailOpen}
+          onOpenChange={setEmailOpen}
+          recipient={{ id: contact.id, name: contact.name, email: contact.email, type: 'contact' }}
+          listings={selectedListings}
+          onOpened={handleShared}
         />
       )}
     </>

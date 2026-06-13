@@ -172,6 +172,7 @@ function compactCandidate(candidate: RankedContact) {
     status: contact.status,
     city: contact.city,
     locationPreference: contact.locationPreference,
+    requirementPurpose: contact.requirementPurpose,
     propertyPreference: contact.propertyPreference,
     notes: contact.notes?.slice(0, 300),
     localFitScore: candidate.localScore,

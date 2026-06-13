@@ -40,6 +40,7 @@ import {
   contactTypeOptions,
   leadStageOptions,
   propertyTypeOptions,
+  requirementPurposeOptions,
   Listing,
 } from '@/lib/types';
 import { Separator } from './ui/separator';
@@ -60,6 +61,8 @@ interface ContactFormProps {
   contact?: Contact | null;
   allContacts: Contact[];
   allListings: Listing[];
+  onSaved?: (contact: Contact) => void;
+  initialValues?: Partial<ContactFormData>;
 }
 
 const defaultFormValues: Partial<ContactFormData> = {
@@ -72,6 +75,7 @@ const defaultFormValues: Partial<ContactFormData> = {
   contactType: undefined,
   leadStage: 'New',
   locationPreference: '',
+  requirementPurpose: [],
   propertyPreference: [],
   offeredListings: [],
   notes: '',
@@ -85,6 +89,8 @@ export function ContactForm({
   contact,
   allContacts,
   allListings,
+  onSaved,
+  initialValues,
 }: ContactFormProps) {
   const [isPending, startTransition] = React.useTransition();
   const { toast } = useToast();
@@ -108,6 +114,7 @@ export function ContactForm({
           contactType: contact.contactType || undefined,
           leadStage: contact.leadStage || 'New',
           locationPreference: contact.locationPreference || '',
+          requirementPurpose: contact.requirementPurpose || [],
           propertyPreference: contact.propertyPreference || [],
           offeredListings: contact.offeredListings || [],
           notes: contact.notes || '',
@@ -116,10 +123,10 @@ export function ContactForm({
         };
         form.reset(contactValues);
       } else {
-        form.reset(defaultFormValues);
+        form.reset({ ...defaultFormValues, ...initialValues });
       }
     }
-  }, [isOpen, contact, form]);
+  }, [isOpen, contact, form, initialValues]);
 
   const phone = form.watch('phone');
   const email = form.watch('email');
@@ -138,6 +145,7 @@ export function ContactForm({
           title: 'Success!',
           description: `Contact ${contact ? 'updated' : 'added'} successfully.`,
         });
+        onSaved?.(result.contact);
         onOpenChange(false);
         router.refresh();
       } else {
@@ -246,6 +254,41 @@ export function ContactForm({
                 <FormItem><FormLabel>Reference Contact</FormLabel><FormControl><Input placeholder="e.g. Referral name" {...field} /></FormControl><FormMessage /></FormItem>
               )} />
             </div>
+
+            <FormField
+              control={form.control}
+              name="requirementPurpose"
+              render={() => (
+                <FormItem>
+                  <FormLabel>Requirement Purpose</FormLabel>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {requirementPurposeOptions.map((item) => (
+                      <FormField
+                        key={item}
+                        control={form.control}
+                        name="requirementPurpose"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center space-x-2 space-y-0 rounded-md border p-3">
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value?.includes(item)}
+                                onCheckedChange={(checked) => {
+                                  return checked
+                                    ? field.onChange([...(field.value || []), item])
+                                    : field.onChange((field.value || []).filter((value) => value !== item));
+                                }}
+                              />
+                            </FormControl>
+                            <FormLabel className="font-normal text-sm">{item}</FormLabel>
+                          </FormItem>
+                        )}
+                      />
+                    ))}
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

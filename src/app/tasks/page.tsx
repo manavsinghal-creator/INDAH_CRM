@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowRight, Lightbulb, ListTodo, User, Building, Phone, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
+import { RefreshButton } from '@/components/refresh-button';
 
 const priorityVariantMap: Record<Task['priority'], 'destructive' | 'accent' | 'secondary'> = {
     High: 'destructive',
@@ -255,35 +256,41 @@ export default function TasksPage() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
+  const refreshTasks = React.useCallback(async () => {
     setIsLoading(true);
-    Promise.all([getContacts(), getListings()])
-      .then(([contacts, listings]) => {
-          const generatedTasks = generateTasks(contacts, listings);
-          setTasks(generatedTasks);
-      })
-      .catch(err => {
-        console.error(err);
-        setError('Failed to fetch data to generate tasks.');
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+    setError(null);
+    try {
+      const [contacts, listings] = await Promise.all([getContacts(), getListings()]);
+      setTasks(generateTasks(contacts, listings));
+    } catch (err) {
+      console.error(err);
+      setError('Failed to fetch data to generate tasks.');
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  React.useEffect(() => {
+    refreshTasks().catch(() => undefined);
+  }, [refreshTasks]);
   
   const contactTasks = tasks.filter(t => t.category === 'Contact');
   const listingTasks = tasks.filter(t => t.category === 'Listing');
 
   return (
     <main className="container mx-auto p-4 md:p-6 lg:p-8">
-      <div className="space-y-4 mb-8">
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <ListTodo className="h-8 w-8 text-primary"/>
-            Intelligent Task Board
-        </h1>
-        <p className="text-lg text-muted-foreground">
-            Your smart to-do list. Key action items based on your CRM data.
-        </p>
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-4">
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+              <ListTodo className="h-8 w-8 text-primary"/>
+              Intelligent Task Board
+          </h1>
+          <p className="text-lg text-muted-foreground">
+              Your smart to-do list. Key action items based on your CRM data.
+          </p>
+        </div>
+        <RefreshButton onRefresh={refreshTasks} className="w-full sm:w-auto" />
       </div>
 
       {isLoading && (

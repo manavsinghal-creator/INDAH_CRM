@@ -50,6 +50,7 @@ import { Skeleton } from './ui/skeleton';
 import { Input } from './ui/input';
 import { ChannelPartnerViewDialog } from './channel-partner-view-dialog';
 import { useRouter } from 'next/navigation';
+import { RefreshButton } from './refresh-button';
 
 type SortKey = keyof Pick<ChannelPartner, 'serialNumber' | 'name' | 'companyName' | 'city' | 'partnerType' | 'clienteleType' | 'investmentPreference'>;
 
@@ -157,6 +158,7 @@ export function ChannelPartnerList({ initialPartners }: { initialPartners: Chann
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
+                <RefreshButton className="w-full md:w-auto" />
             </div>
             <div className="flex flex-wrap gap-2">
               <Button onClick={handleAddNew} variant="default" className="shadow-sm">

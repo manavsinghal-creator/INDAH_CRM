@@ -21,11 +21,13 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import type { Listing, Contact, ChannelPartner } from '@/lib/types';
-import { getContacts, getChannelPartners } from '@/app/actions';
+import { getContacts, getChannelPartners, markContactPropertiesShared } from '@/app/actions';
 import { Label } from './ui/label';
 import { Skeleton } from './ui/skeleton';
-import { MessageCircle } from 'lucide-react';
+import { Mail, MessageCircle } from 'lucide-react';
 import { WhatsAppDraftDialog } from './whatsapp-draft-dialog';
+import { EmailDraftDialog } from './email-draft-dialog';
+import { Checkbox } from './ui/checkbox';
 
 type Recipient = (Contact | ChannelPartner) & { type: 'Contact' | 'Channel Partner' };
 
@@ -47,6 +49,8 @@ export function SendListingsDialog({
   const [selectedRecipientId, setSelectedRecipientId] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
   const [isDraftOpen, setDraftOpen] = React.useState(false);
+  const [isEmailOpen, setEmailOpen] = React.useState(false);
+  const [updatePipeline, setUpdatePipeline] = React.useState(true);
 
   React.useEffect(() => {
     if (isOpen) {
@@ -76,6 +80,15 @@ export function SendListingsDialog({
 
   const isSendDisabled = !selectedRecipientId;
   const selectedRecipient = allRecipients.find((recipient) => recipient.id === selectedRecipientId);
+  const handleShared = () => {
+    if (!selectedRecipient || selectedRecipient.type !== 'Contact') return;
+    void markContactPropertiesShared(
+      selectedRecipient.id,
+      listings.map((listing) => listing.id),
+      listings.map((listing) => `${listing.listingId || 'Not assigned'} - ${listing.listingName}`),
+      updatePipeline
+    );
+  };
 
   return (
     <>
@@ -121,10 +134,20 @@ export function SendListingsDialog({
                 </Select>
             )}
           </div>
+          {selectedRecipient?.type === 'Contact' && (
+            <div className="flex items-center gap-2">
+              <Checkbox id="listing-share-update-pipeline" checked={updatePipeline} onCheckedChange={(checked) => setUpdatePipeline(checked === true)} />
+              <Label htmlFor="listing-share-update-pipeline" className="text-sm font-normal">Update pipeline to Property Shared after opening a draft</Label>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
             Cancel
+          </Button>
+          <Button variant="outline" onClick={() => setEmailOpen(true)} disabled={!selectedRecipient?.email}>
+            <Mail className="mr-2 h-4 w-4" />
+            Email Draft
           </Button>
           <Button onClick={() => setDraftOpen(true)} disabled={isSendDisabled}>
             <MessageCircle className="mr-2 h-4 w-4" />
@@ -138,6 +161,7 @@ export function SendListingsDialog({
         isOpen={isDraftOpen}
         onOpenChange={setDraftOpen}
         onOpened={() => {
+          handleShared();
           onSendSuccess();
           onOpenChange(false);
         }}
@@ -145,6 +169,24 @@ export function SendListingsDialog({
           id: selectedRecipient.id,
           name: selectedRecipient.name,
           phone: selectedRecipient.phone,
+          type: selectedRecipient.type === 'Contact' ? 'contact' : 'channelPartner',
+        }}
+        listings={listings}
+      />
+    )}
+    {isEmailOpen && selectedRecipient?.email && (
+      <EmailDraftDialog
+        isOpen={isEmailOpen}
+        onOpenChange={setEmailOpen}
+        onOpened={() => {
+          handleShared();
+          onSendSuccess();
+          onOpenChange(false);
+        }}
+        recipient={{
+          id: selectedRecipient.id,
+          name: selectedRecipient.name,
+          email: selectedRecipient.email,
           type: selectedRecipient.type === 'Contact' ? 'contact' : 'channelPartner',
         }}
         listings={listings}
