@@ -28,6 +28,7 @@ export type PropertyMatcherInput = z.infer<typeof PropertyMatcherInputSchema>;
 
 const SuggestedPropertySchema = z.object({
   id: z.string(),
+  listingId: z.string(),
   name: z.string(),
   matchScore: z.number(),
   matchReason: z.string(),
@@ -55,6 +56,7 @@ function compactContact(contact: Contact) {
     status: contact.status,
     city: contact.city,
     locationPreference: contact.locationPreference,
+    requirementPurpose: contact.requirementPurpose,
     propertyPreference: contact.propertyPreference,
     notes: contact.notes?.slice(0, 300),
   };
@@ -66,6 +68,7 @@ function createLocalFallback(candidates: RankedListing[]): PropertyMatcherOutput
     .slice(0, MAX_RETURNED_MATCHES)
     .map(({ listing, localScore, keyFitFactors }) => ({
       id: listing.id,
+      listingId: listing.listingId || '',
       name: listing.listingName,
       matchScore: localScore,
       matchReason: keyFitFactors.length
@@ -89,6 +92,16 @@ function createLocalFallback(candidates: RankedListing[]): PropertyMatcherOutput
       candidateCount: candidates.length,
     },
   };
+}
+
+function hideInternalListingIds(text: string, candidates: RankedListing[]) {
+  return candidates.reduce(
+    (sanitized, candidate) => sanitized.replaceAll(
+      candidate.listing.id,
+      candidate.listing.listingId || candidate.listing.listingName
+    ),
+    text
+  );
 }
 
 export async function propertyMatcher(input: PropertyMatcherInput): Promise<PropertyMatcherOutput> {
@@ -173,6 +186,7 @@ const propertyMatcherFlow = ai.defineFlow(
           return {
             ...property,
             id: candidate.listing.id,
+            listingId: candidate.listing.listingId || '',
             name: candidate.listing.listingName,
           };
         })
@@ -187,7 +201,7 @@ const propertyMatcherFlow = ai.defineFlow(
       }
 
       const result: PropertyMatcherOutput = {
-        recommendations: output.recommendations,
+        recommendations: hideInternalListingIds(output.recommendations, candidates),
         suggestedProperties,
         matchMetadata: {
           source: 'gemini',

@@ -14,13 +14,17 @@ import { Textarea } from '@/components/ui/textarea';
 import type { Contact, Listing, MatchMetadata } from '@/lib/types';
 import type { PropertyMatcherOutput } from '@/ai/flows/property-matcher';
 import { useToast } from '@/hooks/use-toast';
-import { Sparkles, Copy, Check, MessageCircle } from 'lucide-react';
+import { Sparkles, Copy, Check, Mail, MessageCircle } from 'lucide-react';
 import { Skeleton } from './ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { WhatsAppDraftDialog } from './whatsapp-draft-dialog';
 import { MatchSourceBadge } from './match-source-badge';
+import { Checkbox } from './ui/checkbox';
+import { Label } from './ui/label';
+import { EmailDraftDialog } from './email-draft-dialog';
+import { markContactPropertiesShared } from '@/app/actions';
 
 type SuggestedProperty = PropertyMatcherOutput['suggestedProperties'][number];
 
@@ -36,7 +40,10 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
   const [recommendations, setRecommendations] = React.useState('');
   const [suggestedProperties, setSuggestedProperties] = React.useState<SuggestedProperty[]>([]);
   const [matchMetadata, setMatchMetadata] = React.useState<MatchMetadata | null>(null);
-  const [draftListing, setDraftListing] = React.useState<(Listing & { matchReason?: string }) | null>(null);
+  const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
+  const [isWhatsAppOpen, setWhatsAppOpen] = React.useState(false);
+  const [isEmailOpen, setEmailOpen] = React.useState(false);
+  const [updatePipeline, setUpdatePipeline] = React.useState(true);
   const { toast } = useToast();
   const findMatchedListing = (property: SuggestedProperty) => allListings.find((listing) =>
     listing.id === property.id
@@ -60,6 +67,7 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
           if (result.success && result.data) {
             setRecommendations(result.data.recommendations);
             setSuggestedProperties(result.data.suggestedProperties || []);
+            setSelectedIds((result.data.suggestedProperties || []).map((property: SuggestedProperty) => property.id));
             setMatchMetadata(result.data.matchMetadata);
           } else {
             toast({
@@ -85,11 +93,39 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
         // Reset state on close
         setRecommendations('');
         setSuggestedProperties([]);
+        setSelectedIds([]);
         setMatchMetadata(null);
     }
   }, [isOpen, handleMatch]);
 
   const formattedRecommendations = recommendations.replace(/\n-/g, '\n\n-');
+  const selectedListings = suggestedProperties
+    .filter((property) => selectedIds.includes(property.id))
+    .map((property) => {
+      const listing = findMatchedListing(property);
+      return listing ? { ...listing, matchReason: property.matchReason } : null;
+    })
+    .filter((listing): listing is Listing & { matchReason: string } => Boolean(listing));
+
+  const handleToggleProperty = (id: string) => {
+    setSelectedIds((current) => current.includes(id)
+      ? current.filter((propertyId) => propertyId !== id)
+      : [...current, id]);
+  };
+
+  const handleShared = () => {
+    void markContactPropertiesShared(
+      contact.id,
+      selectedListings.map((listing) => listing.id),
+      selectedListings.map((listing) => `${listing.listingId || 'Not assigned'} - ${listing.listingName}`),
+      updatePipeline
+    )
+      .then((result) => {
+        if (!result.success) {
+          toast({ title: 'Draft opened', description: 'The selected listings could not be saved to the contact.' });
+        }
+      });
+  };
 
   const copyMessage = `Hello ${contact?.name},\n\nBased on your preferences, I have found a few properties I think you will love. Here are my top recommendations:\n\n${formattedRecommendations}\n\nLet me know which ones catch your eye, and I would be happy to share more details or arrange a viewing.\n\nBest Regards,\nINDAH LIVING`;
 
@@ -148,15 +184,33 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
 
                     {suggestedProperties && suggestedProperties.length > 0 && (
                         <div className="space-y-3">
-                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Matched Listings</h4>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Matched Listings</h4>
+                              <div className="flex gap-2">
+                                <Button type="button" size="sm" variant="outline" onClick={() => setSelectedIds(suggestedProperties.map((property) => property.id))}>
+                                  Select All
+                                </Button>
+                                <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedIds([])}>
+                                  Deselect All
+                                </Button>
+                              </div>
+                            </div>
                             <div className="grid grid-cols-1 gap-4">
                                 {suggestedProperties.map((property) => (
                                     <Card key={property.id} className="overflow-hidden border border-slate-100 hover:border-slate-200 transition-colors">
                                         <CardHeader className="bg-slate-50/50 pb-3">
                                             <div className="flex items-center justify-between gap-4">
-                                                <div>
+                                                <div className="flex min-w-0 items-start gap-3">
+                                                  <Checkbox
+                                                    aria-label={`Select ${property.name}`}
+                                                    className="mt-1"
+                                                    checked={selectedIds.includes(property.id)}
+                                                    onCheckedChange={() => handleToggleProperty(property.id)}
+                                                  />
+                                                  <div>
                                                     <CardTitle className="text-base text-slate-900 font-semibold">{property.name}</CardTitle>
-                                                    <CardDescription className="text-xs font-mono">Listing ID: {property.id}</CardDescription>
+                                                    <CardDescription className="text-xs font-mono">Listing ID: {property.listingId || 'Not assigned'}</CardDescription>
+                                                  </div>
                                                 </div>
                                                 {property.matchScore != null && (
                                                     <Badge variant="secondary" className={`text-xs font-semibold px-2 py-0.5 select-none ${
@@ -173,20 +227,6 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
                                         </CardHeader>
                                         <CardContent className="pt-3 text-sm space-y-3">
                                             <p className="text-muted-foreground leading-relaxed">{property.matchReason}</p>
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                disabled={!contact.phone || !findMatchedListing(property)}
-                                                onClick={() => {
-                                                    const listing = findMatchedListing(property);
-                                                    if (listing) setDraftListing({ ...listing, matchReason: property.matchReason });
-                                                }}
-                                            >
-                                                <MessageCircle className="mr-2 h-4 w-4 text-emerald-600" />
-                                                WhatsApp Draft
-                                            </Button>
-                                            
                                             {property.keySellingPoints && property.keySellingPoints.length > 0 && (
                                                 <div className="space-y-1.5 pt-2 border-t border-slate-100">
                                                     <span className="text-xs font-semibold text-slate-650">Top Match Factors:</span>
@@ -209,6 +249,14 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
                 </div>
             </ScrollArea>
         </div>
+        {suggestedProperties.length > 0 && (
+          <div className="flex items-center gap-2 border-t pt-3">
+            <Checkbox id="update-property-shared-stage" checked={updatePipeline} onCheckedChange={(checked) => setUpdatePipeline(checked === true)} />
+            <Label htmlFor="update-property-shared-stage" className="text-sm font-normal">
+              Update pipeline to Property Shared after opening a draft
+            </Label>
+          </div>
+        )}
         <DialogFooter>
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
                 Close
@@ -217,17 +265,33 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
               <Copy className="mr-2 h-4 w-4" />
               Copy
             </Button>
+            <Button type="button" variant="outline" onClick={() => setEmailOpen(true)} disabled={!contact.email || selectedListings.length === 0}>
+              <Mail className="mr-2 h-4 w-4" />
+              Email ({selectedListings.length})
+            </Button>
+            <Button type="button" onClick={() => setWhatsAppOpen(true)} disabled={!contact.phone || selectedListings.length === 0}>
+              <MessageCircle className="mr-2 h-4 w-4" />
+              WhatsApp ({selectedListings.length})
+            </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-    {draftListing && (
+    {isWhatsAppOpen && (
       <WhatsAppDraftDialog
-        isOpen={!!draftListing}
-        onOpenChange={(open) => {
-          if (!open) setDraftListing(null);
-        }}
+        isOpen={isWhatsAppOpen}
+        onOpenChange={setWhatsAppOpen}
+        onOpened={handleShared}
         recipient={{ id: contact.id, name: contact.name, phone: contact.phone, type: 'contact' }}
-        listings={[draftListing]}
+        listings={selectedListings}
+      />
+    )}
+    {isEmailOpen && contact.email && (
+      <EmailDraftDialog
+        isOpen={isEmailOpen}
+        onOpenChange={setEmailOpen}
+        onOpened={handleShared}
+        recipient={{ id: contact.id, name: contact.name, email: contact.email, type: 'contact' }}
+        listings={selectedListings}
       />
     )}
     </>

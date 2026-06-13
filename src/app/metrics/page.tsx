@@ -9,12 +9,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { AlertTriangle, Building, Handshake, Users, MapPin, ListChecks, Wallet, Tag, Home, BarChart, RefreshCw, GitBranch } from "lucide-react";
+import { AlertTriangle, Building, Handshake, Users, MapPin, ListChecks, Wallet, Tag, Home, BarChart, GitBranch } from "lucide-react";
 import { format, formatDistanceToNow } from 'date-fns';
 import { cn } from "@/lib/utils";
 import React from "react";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RefreshButton } from "@/components/refresh-button";
 
 const MetricCard = ({ title, value, description, icon: Icon, className }: { title: string, value: string | number, description?: string, icon: React.ElementType, className?: string }) => {
   return (
@@ -43,13 +43,14 @@ type MetricsData = Awaited<ReturnType<typeof getDashboardMetrics>>;
 
 export default function MetricsPage() {
   const [metrics, setMetrics] = React.useState<MetricsData | null>(null);
-  const [isRefreshing, startRefresh] = React.useTransition();
 
-  const refreshMetrics = React.useCallback(() => {
-    startRefresh(async () => setMetrics(await getDashboardMetrics()));
+  const refreshMetrics = React.useCallback(async () => {
+    setMetrics(await getDashboardMetrics());
   }, []);
 
-  React.useEffect(() => refreshMetrics(), [refreshMetrics]);
+  React.useEffect(() => {
+    refreshMetrics().catch(() => undefined);
+  }, [refreshMetrics]);
 
   if (metrics && (!metrics.success || !metrics.data)) {
     return (
@@ -90,10 +91,7 @@ export default function MetricsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Metrics Dashboard</h1>
           <div className="flex items-center gap-3">
             <p className="text-sm text-muted-foreground">Last updated: {formattedDate}</p>
-            <Button variant="outline" size="sm" onClick={refreshMetrics} disabled={isRefreshing}>
-              <RefreshCw className={cn("mr-2 h-4 w-4", isRefreshing && "animate-spin")} />
-              Refresh
-            </Button>
+            <RefreshButton onRefresh={refreshMetrics} />
           </div>
       </div>
       

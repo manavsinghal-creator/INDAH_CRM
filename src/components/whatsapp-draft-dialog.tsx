@@ -76,7 +76,7 @@ export function WhatsAppDraftDialog({
       recipientType: recipient.type || 'contact',
       phone: normalizedPhone || recipient.phone,
       listingIds: listings.map((listing) => listing.id),
-      listingNames: listings.map((listing) => listing.listingName),
+      listingNames: listings.map((listing) => `${listing.listingId || 'Not assigned'} - ${listing.listingName}`),
     }).then((result) => {
       if (!result.success) {
         toast({

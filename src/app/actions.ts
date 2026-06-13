@@ -38,6 +38,7 @@ function withLegacyContactOwnership(contact: Contact): Contact {
     return {
         ...contact,
         leadStage: contact.leadStage || 'New',
+        requirementPurpose: contact.requirementPurpose || [],
         createdByName: contact.createdByName || 'Admin',
         createdByEmail: contact.createdByEmail || PRIMARY_ADMIN_EMAIL,
         updatedByName: contact.updatedByName || contact.createdByName || 'Admin',
@@ -113,6 +114,13 @@ export async function getActivityLogs(): Promise<ActivityLog[]> {
         const snapshot = await getDocs(query(activityLogsCollection, orderBy('createdAt', 'desc'), limit(300)));
         return snapshot.docs.map((activityDoc) => {
             const data = activityDoc.data();
+            const fallbackLabel = data.entityType === 'listing'
+                ? 'Listing'
+                : data.entityType === 'contact'
+                    ? 'Contact'
+                    : data.entityType === 'channelPartner'
+                        ? 'Channel Partner'
+                        : 'Login Session';
             return {
                 id: activityDoc.id,
                 userEmail: data.userEmail || '',
@@ -120,7 +128,9 @@ export async function getActivityLogs(): Promise<ActivityLog[]> {
                 action: data.action,
                 entityType: data.entityType,
                 entityId: data.entityId || '',
-                entityLabel: data.entityLabel || data.entityId || '',
+                entityLabel: data.entityLabel && data.entityLabel !== data.entityId
+                    ? data.entityLabel
+                    : fallbackLabel,
                 changes: data.changes || [],
                 createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
             } as ActivityLog;
@@ -154,6 +164,39 @@ export async function recordWhatsAppDraftOpened(input: z.infer<typeof WhatsAppDr
         entityLabel: result.data.recipientName,
         changes: [
             { field: 'phone', before: '—', after: result.data.phone },
+            {
+                field: 'listingsIncluded',
+                before: '—',
+                after: result.data.listingNames.length ? result.data.listingNames.join(', ') : '—',
+            },
+        ],
+    });
+    return { success: true };
+}
+
+const EmailDraftActivitySchema = z.object({
+    recipientId: z.string().min(1),
+    recipientName: z.string().min(1),
+    recipientType: z.enum(['contact', 'channelPartner']),
+    email: z.string().email(),
+    listingIds: z.array(z.string()),
+    listingNames: z.array(z.string()),
+});
+
+export async function recordEmailDraftOpened(input: z.infer<typeof EmailDraftActivitySchema>): Promise<{ success: boolean }> {
+    const user = await requireAuthorizedUser();
+    const result = EmailDraftActivitySchema.safeParse(input);
+    if (!result.success) return { success: false };
+
+    await logActivity({
+        userEmail: user.email,
+        userName: user.name,
+        action: 'emailDraftOpened',
+        entityType: result.data.recipientType,
+        entityId: result.data.recipientId,
+        entityLabel: result.data.recipientName,
+        changes: [
+            { field: 'email', before: '—', after: result.data.email },
             {
                 field: 'listingsIncluded',
                 before: '—',
@@ -291,6 +334,82 @@ export async function updateContact(id: string, formData: z.infer<typeof Contact
     }
 }
 
+export async function markContactPropertiesShared(
+    id: string,
+    listingIds: string[],
+    listingLabels: string[],
+    updatePipeline: boolean
+): Promise<{ success: boolean; contact?: Contact; error?: string }> {
+    const user = await requireAuthorizedUser();
+    const uniqueListingIds = [...new Set(listingIds.filter(Boolean))];
+    if (!uniqueListingIds.length) return { success: false, error: 'No listings selected.' };
+
+    if (!isCrmDatabaseConfigured) {
+        const existing = demoContacts.find((contact) => contact.id === id);
+        if (!existing) return { success: false, error: 'Demo contact not found.' };
+        const contact = updateDemoContact(id, {
+            ...existing,
+            offeredListings: [...new Set([...(existing.offeredListings || []), ...uniqueListingIds])],
+            leadStage: updatePipeline ? 'Property Shared' : getContactLeadStage(existing),
+        });
+        clearMatchCache();
+        revalidatePath('/');
+        return contact ? { success: true, contact } : { success: false, error: 'Demo contact not found.' };
+    }
+
+    try {
+        const contactRef = doc(db, 'contacts', id);
+        const beforeSnapshot = await getDoc(contactRef);
+        if (!beforeSnapshot.exists()) return { success: false, error: 'Contact not found.' };
+        const beforeData = beforeSnapshot.data();
+        const updatedData = {
+            offeredListings: [...new Set([...(beforeData.offeredListings || []), ...uniqueListingIds])],
+            leadStage: updatePipeline ? 'Property Shared' : beforeData.leadStage || 'New',
+            updatedByName: user.name,
+            updatedByEmail: user.email,
+            updatedAt: serverTimestamp(),
+        };
+        await updateDoc(contactRef, updatedData);
+        clearMatchCache();
+        revalidatePath('/');
+        const savedSnapshot = await getDoc(contactRef);
+        const savedData = savedSnapshot.data();
+        await logActivity({
+            userEmail: user.email,
+            userName: user.name,
+            action: 'updated',
+            entityType: 'contact',
+            entityId: id,
+            entityLabel: beforeData.name || 'Contact',
+            changes: [
+                {
+                    field: 'propertiesShared',
+                    before: '—',
+                    after: listingLabels.length ? listingLabels.join(', ') : `${uniqueListingIds.length} selected properties`,
+                },
+                ...(displayActivityValue(beforeData.leadStage) !== displayActivityValue(updatedData.leadStage)
+                    ? [{
+                        field: 'leadStage',
+                        before: displayActivityValue(beforeData.leadStage || 'New'),
+                        after: displayActivityValue(updatedData.leadStage),
+                    }]
+                    : []),
+            ],
+        });
+        return {
+            success: true,
+            contact: {
+                id,
+                ...savedData,
+                createdAt: savedData?.createdAt?.toDate().toISOString(),
+                updatedAt: savedData?.updatedAt?.toDate().toISOString(),
+            } as Contact,
+        };
+    } catch {
+        return { success: false, error: 'Failed to update shared properties.' };
+    }
+}
+
 export async function deleteContact(id: string): Promise<{ success: boolean; error?: string }> {
     const user = await requireAuthorizedUser();
     if (!isCrmDatabaseConfigured) {
@@ -385,7 +504,9 @@ export async function addListing(formData: z.infer<typeof ListingFormSchema>): P
             action: 'created',
             entityType: 'listing',
             entityId: docRef.id,
-            entityLabel: result.data.listingName,
+            entityLabel: result.data.listingId
+                ? `${result.data.listingId} - ${result.data.listingName}`
+                : result.data.listingName,
         });
         return { success: true, listing: { id: docRef.id, ...savedData, createdAt: savedData?.createdAt?.toDate().toISOString(), updatedAt: savedData?.updatedAt?.toDate().toISOString() } as Listing };
     } catch (error) {
@@ -425,7 +546,9 @@ export async function updateListing(id: string, formData: z.infer<typeof Listing
             action: 'updated',
             entityType: 'listing',
             entityId: id,
-            entityLabel: result.data.listingName,
+            entityLabel: result.data.listingId
+                ? `${result.data.listingId} - ${result.data.listingName}`
+                : result.data.listingName,
             changes: getActivityChanges(beforeData, result.data),
         });
         return { success: true, listing: { id: id, ...savedData, createdAt: savedData?.createdAt?.toDate().toISOString(), updatedAt: savedData?.updatedAt?.toDate().toISOString() } as Listing };
@@ -456,7 +579,9 @@ export async function deleteListing(id: string): Promise<{ success: boolean; err
             action: 'deleted',
             entityType: 'listing',
             entityId: id,
-            entityLabel: beforeData?.listingName || id,
+            entityLabel: beforeData?.listingId
+                ? `${beforeData.listingId} - ${beforeData.listingName || 'Listing'}`
+                : beforeData?.listingName || 'Listing',
         });
         return { success: true };
     } catch (error) {

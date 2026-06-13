@@ -87,7 +87,7 @@ export function ListingViewDialog({ isOpen, onOpenChange, listing, onDuplicate }
             <div>
               <DialogTitle>{listing.listingName || 'N/A'}</DialogTitle>
               <DialogDescription>
-                Viewing full details for Listing ID: {listing.listingId || 'N/A'} (Internal Project: {listing.projectName})
+                Viewing full details for Listing ID: {listing.listingId || 'Not assigned'} (Project: {listing.projectName})
               </DialogDescription>
             </div>
             <Button variant="outline" size="sm" className="ml-auto" onClick={() => setContactMatchOpen(true)} disabled={!isListingAvailable(listing)}>

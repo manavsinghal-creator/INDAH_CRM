@@ -23,6 +23,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { ActivityAction, ActivityEntityType, ActivityLog } from '@/lib/types';
+import { RefreshButton } from '@/components/refresh-button';
 
 type SortKey = 'createdAt' | 'user' | 'action' | 'entityType' | 'entityLabel';
 
@@ -38,6 +39,7 @@ const actionLabels: Record<ActivityAction, string> = {
   updated: 'Updated',
   deleted: 'Deleted',
   whatsappDraftOpened: 'Opened WhatsApp draft',
+  emailDraftOpened: 'Opened email draft',
   signedIn: 'Signed in',
 };
 
@@ -49,6 +51,11 @@ function activityDetails(log: ActivityLog) {
   if (log.action === 'whatsappDraftOpened') {
     const listings = log.changes.find((change) => change.field === 'listingsIncluded')?.after;
     return listings && listings !== '—' ? `Listings: ${listings}` : 'WhatsApp draft prepared';
+  }
+
+  if (log.action === 'emailDraftOpened') {
+    const listings = log.changes.find((change) => change.field === 'listingsIncluded')?.after;
+    return listings && listings !== '—' ? `Listings: ${listings}` : 'Email draft prepared';
   }
 
   if (log.action === 'signedIn') return 'Successful CRM login';
@@ -63,7 +70,7 @@ function activityDetails(log: ActivityLog) {
 }
 
 function visibleChanges(log: ActivityLog) {
-  return log.changes.filter((change) => change.field !== 'listingIds');
+  return log.changes.filter((change) => change.field !== 'listingIds' && change.field !== 'offeredListings');
 }
 
 function displayDetailValue(value: string) {
@@ -159,6 +166,7 @@ export function ActivityLogList({ initialLogs }: { initialLogs: ActivityLog[] })
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
+        <RefreshButton className="w-full lg:w-auto" />
         <select
           aria-label="Filter by activity"
           className="h-10 rounded-md border border-input bg-background px-3 text-sm"
@@ -170,6 +178,7 @@ export function ActivityLogList({ initialLogs }: { initialLogs: ActivityLog[] })
           <option value="updated">Updated</option>
           <option value="deleted">Deleted</option>
           <option value="whatsappDraftOpened">WhatsApp drafts</option>
+          <option value="emailDraftOpened">Email drafts</option>
           <option value="signedIn">Sign-ins</option>
         </select>
         <select

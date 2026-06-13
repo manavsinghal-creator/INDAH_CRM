@@ -24,7 +24,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
-import { MoreHorizontal, Edit, Trash2, Eye, Copy, ExternalLink, Link as LinkIcon, Check } from 'lucide-react';
+import { MoreHorizontal, Edit, Trash2, Eye, Copy, ExternalLink, Link as LinkIcon, Check, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { getListingAvailability, isListingAvailable } from '@/lib/crm-status';
@@ -34,6 +34,7 @@ interface ListingCardProps {
   isSelected: boolean;
   onSelect: (id: string, checked: boolean) => void;
   onView: (listing: Listing) => void;
+  onMatch: (listing: Listing) => void;
   onEdit: (listing: Listing) => void;
   onDuplicate: (listing: Listing) => void;
   onDelete: (id: string) => void;
@@ -55,6 +56,7 @@ export function ListingCard({
     isSelected,
     onSelect,
     onView,
+    onMatch,
     onEdit,
     onDuplicate,
     onDelete,
@@ -91,6 +93,17 @@ export function ListingCard({
             <CardTitle className="text-base text-foreground">{listing.listingName}</CardTitle>
             <CardDescription>{listing.location}</CardDescription>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 flex-shrink-0"
+            onClick={() => onMatch(listing)}
+            disabled={!isAvailable}
+            aria-label={`Find matching contacts for ${listing.listingName}`}
+            title="Find matching contacts"
+          >
+            <Sparkles className="h-4 w-4 text-primary" />
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0">

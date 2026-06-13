@@ -24,13 +24,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { getContacts, getChannelPartners } from '@/app/actions';
+import { getContacts, getChannelPartners, getListings, markContactPropertiesShared } from '@/app/actions';
 // findQuickPropertyMatches moved to fetch
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
-import { Sparkles, MessageCircle } from 'lucide-react';
+import { Mail, MessageCircle, PlusCircle, Sparkles } from 'lucide-react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { QuickPropertyMatcherInputSchema, budgetOptions, bhkOptions, type QuickPropertyMatcherOutput, type Contact, type ChannelPartner } from '@/lib/types';
+import { QuickPropertyMatcherInputSchema, budgetOptions, bhkOptions, type QuickPropertyMatcherOutput, type Contact, type ChannelPartner, type ContactFormData, type Listing } from '@/lib/types';
 import type { z } from 'zod';
 import { ScrollArea } from './ui/scroll-area';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from './ui/card';
@@ -39,6 +39,8 @@ import { Separator } from './ui/separator';
 import { Checkbox } from './ui/checkbox';
 import { WhatsAppDraftDialog } from './whatsapp-draft-dialog';
 import { MatchSourceBadge } from './match-source-badge';
+import { ContactForm } from './contact-form';
+import { EmailDraftDialog } from './email-draft-dialog';
 
 type MatchedListing = QuickPropertyMatcherOutput['matchedListings'][0];
 type FormData = z.infer<typeof QuickPropertyMatcherInputSchema>;
@@ -52,9 +54,13 @@ export function QuickMatchDialog() {
 
   const [contacts, setContacts] = React.useState<Contact[]>([]);
   const [partners, setPartners] = React.useState<ChannelPartner[]>([]);
+  const [allListings, setAllListings] = React.useState<Listing[]>([]);
   const [selectedRecipientId, setSelectedRecipientId] = React.useState<string | null>(null);
   const [isRecipientDataLoading, setRecipientDataLoading] = React.useState(false);
   const [isDraftOpen, setDraftOpen] = React.useState(false);
+  const [isEmailOpen, setEmailOpen] = React.useState(false);
+  const [isContactFormOpen, setContactFormOpen] = React.useState(false);
+  const [updatePipeline, setUpdatePipeline] = React.useState(true);
   
   const { toast } = useToast();
   
@@ -75,10 +81,11 @@ export function QuickMatchDialog() {
       setView('form');
       setSelectedRecipientId(null);
       setRecipientDataLoading(true);
-      Promise.all([getContacts(), getChannelPartners()])
-        .then(([contactsData, partnersData]) => {
+      Promise.all([getContacts(), getChannelPartners(), getListings()])
+        .then(([contactsData, partnersData, listingsData]) => {
             setContacts(contactsData);
             setPartners(partnersData);
+            setAllListings(listingsData);
         })
         .finally(() => setRecipientDataLoading(false));
     }
@@ -104,8 +111,8 @@ export function QuickMatchDialog() {
 
   const handleToggleListing = (listing: MatchedListing) => {
     setSelectedListings(prev => 
-      prev.some(l => l.listingId === listing.listingId)
-        ? prev.filter(l => l.listingId !== listing.listingId)
+      prev.some(l => l.recordId === listing.recordId)
+        ? prev.filter(l => l.recordId !== listing.recordId)
         : [...prev, listing]
     );
   };
@@ -124,6 +131,38 @@ export function QuickMatchDialog() {
   ];
   
   const selectedRecipient = allRecipients.find((recipient) => recipient.id === selectedRecipientId);
+  const selectedShareListings = React.useMemo(() => selectedListings.map((listing) => {
+    const fullListing = allListings.find((item) => item.id === listing.recordId);
+    return fullListing ? { ...fullListing, matchReason: listing.matchReason } : { ...listing, id: listing.recordId };
+  }), [allListings, selectedListings]);
+  const newContactInitialValues = React.useMemo<Partial<ContactFormData>>(() => {
+    const criteria = form.getValues();
+    return {
+      contactType: 'Buyer',
+      leadStage: 'New',
+      budget: budgetOptions.includes(criteria.budget as typeof budgetOptions[number])
+        ? criteria.budget as ContactFormData['budget']
+        : '<1',
+      locationPreference: criteria.locationPreference || '',
+    };
+  }, [form, matchData]);
+
+  const handleShared = () => {
+    if (!selectedRecipient || selectedRecipient.type !== 'Contact') return;
+    void markContactPropertiesShared(
+      selectedRecipient.id,
+      selectedListings.map((listing) => listing.recordId),
+      selectedListings.map((listing) => `${listing.listingId || 'Not assigned'} - ${listing.listingName}`),
+      updatePipeline
+    );
+  };
+
+  const handleContactSaved = (contact: Contact) => {
+    setContacts((current) => [contact, ...current.filter((item) => item.id !== contact.id)]);
+    setSelectedRecipientId(contact.id);
+    setContactFormOpen(false);
+    setDraftOpen(true);
+  };
 
   return (
     <>
@@ -192,13 +231,15 @@ export function QuickMatchDialog() {
                            <div className="flex items-center space-x-2">
                              <Checkbox id="select-all" checked={matchData.matchedListings.length > 0 && matchData.matchedListings.length === selectedListings.length} onCheckedChange={handleSelectAll} />
                              <Label htmlFor="select-all" className="font-medium">Select All ({selectedListings.length}/{matchData.matchedListings.length})</Label>
+                             <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedListings([])}>Deselect All</Button>
                            </div>
                            {matchData.matchedListings.map(listing => (
-                               <div key={listing.listingId} className="flex items-start space-x-4">
-                                   <Checkbox checked={selectedListings.some(l => l.listingId === listing.listingId)} onCheckedChange={() => handleToggleListing(listing)} className="mt-1" />
+                               <div key={listing.recordId} className="flex items-start space-x-4">
+                                   <Checkbox checked={selectedListings.some(l => l.recordId === listing.recordId)} onCheckedChange={() => handleToggleListing(listing)} className="mt-1" />
                                    <Card className="flex-1">
                                        <CardHeader className="p-4">
                                             <CardTitle className="text-base">{listing.listingName}</CardTitle>
+                                            <p className="text-xs font-mono text-muted-foreground">Listing ID: {listing.listingId || 'Not assigned'}</p>
                                             <CardDescription>{listing.bhkConfiguration} {listing.propertyType} in {listing.location}</CardDescription>
                                             <p className="text-sm font-semibold pt-1">Rs. {listing.basePrice} Cr.</p>
                                             {listing.matchScore != null && (
@@ -228,13 +269,27 @@ export function QuickMatchDialog() {
                             </SelectContent>
                         </Select>
                     </div>
+                    <Button type="button" variant="outline" onClick={() => setContactFormOpen(true)} disabled={selectedListings.length === 0}>
+                      <PlusCircle className="mr-2 h-4 w-4" />
+                      Add New Contact
+                    </Button>
                 </div>
+                {selectedRecipient?.type === 'Contact' && (
+                  <div className="flex items-center gap-2">
+                    <Checkbox id="quick-match-update-pipeline" checked={updatePipeline} onCheckedChange={(checked) => setUpdatePipeline(checked === true)} />
+                    <Label htmlFor="quick-match-update-pipeline" className="text-sm font-normal">Update pipeline to Property Shared after opening a draft</Label>
+                  </div>
+                )}
             </div>
              <DialogFooter>
                 <Button variant="ghost" onClick={() => setView('form')}>Back</Button>
+                <Button variant="outline" onClick={() => setEmailOpen(true)} disabled={!selectedRecipient?.email || selectedListings.length === 0}>
+                  <Mail className="mr-2 h-4 w-4" />
+                  Email ({selectedListings.length})
+                </Button>
                 <Button onClick={() => setDraftOpen(true)} disabled={(!selectedRecipientId) || selectedListings.length === 0}>
                   <MessageCircle className="mr-2 h-4 w-4" />
-                  Preview WhatsApp Draft
+                  WhatsApp ({selectedListings.length})
                 </Button>
              </DialogFooter>
            </>
@@ -251,9 +306,32 @@ export function QuickMatchDialog() {
           phone: selectedRecipient.phone,
           type: selectedRecipient.type === 'Contact' ? 'contact' : 'channelPartner',
         }}
-        listings={selectedListings.map((listing) => ({ ...listing, id: listing.listingId }))}
+        onOpened={handleShared}
+        listings={selectedShareListings}
       />
     )}
+    {isEmailOpen && selectedRecipient?.email && (
+      <EmailDraftDialog
+        isOpen={isEmailOpen}
+        onOpenChange={setEmailOpen}
+        onOpened={handleShared}
+        recipient={{
+          id: selectedRecipient.id,
+          name: selectedRecipient.name,
+          email: selectedRecipient.email,
+          type: selectedRecipient.type === 'Contact' ? 'contact' : 'channelPartner',
+        }}
+        listings={selectedShareListings}
+      />
+    )}
+    <ContactForm
+      isOpen={isContactFormOpen}
+      onOpenChange={setContactFormOpen}
+      allContacts={contacts}
+      allListings={allListings}
+      initialValues={newContactInitialValues}
+      onSaved={handleContactSaved}
+      />
     </>
   );
 }

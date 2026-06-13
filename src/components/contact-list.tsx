@@ -32,6 +32,7 @@ import {
   Search,
   Eye,
   Upload,
+  Sparkles,
 } from 'lucide-react';
 import { deleteContact } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
@@ -56,8 +57,11 @@ import { BulkContactUploadDialog } from './bulk-contact-upload-dialog';
 import { cn } from '@/lib/utils';
 import { ContactWhatsAppDialog } from './contact-whatsapp-dialog';
 import { getContactLeadStage } from '@/lib/crm-status';
+import { LeadStageBadge } from './lead-stage-badge';
+import { PropertyMatchDialog } from './property-match-dialog';
+import { RefreshButton } from './refresh-button';
 
-type SortKey = keyof Pick<Contact, 'serialNumber' | 'name' | 'status' | 'leadStage' | 'budget' | 'city' | 'locationPreference' | 'createdAt' | 'updatedAt' | 'propertyPreference' | 'contactType' | 'referenceContact' | 'isActive' | 'createdByName'>;
+type SortKey = keyof Pick<Contact, 'serialNumber' | 'name' | 'status' | 'leadStage' | 'budget' | 'city' | 'locationPreference' | 'requirementPurpose' | 'createdAt' | 'updatedAt' | 'propertyPreference' | 'contactType' | 'referenceContact' | 'isActive' | 'createdByName'>;
 
 const budgetOrder: Record<Contact['budget'], number> = {
   "<1": 1, "1-3": 2, "3-6": 3, "6-10": 4, ">10": 5
@@ -67,8 +71,13 @@ const statusOrder: Record<Contact['status'], number> = { "Cold": 1, "Warm": 2, "
 
 const contactCreatorName = (contact: Contact) => contact.createdByName || 'Admin';
 const contactCreatorEmail = (contact: Contact) => contact.createdByEmail || 'manavsinghal@gmail.com';
+const includesSearch = (value: unknown, query: string) => {
+  const searchableValue = Array.isArray(value) ? value.join(' ') : value;
+  return String(searchableValue ?? '').toLowerCase().includes(query);
+};
 
 export function ContactList({ initialContacts, allListings }: { initialContacts: Contact[], allListings: Listing[] }) {
+  const [contacts, setContacts] = React.useState(initialContacts);
   const [sortKey, setSortKey] = React.useState<SortKey>('serialNumber');
   const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('asc');
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -77,7 +86,9 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
   const [isViewOpen, setViewOpen] = React.useState(false);
   const [isBulkUploadOpen, setBulkUploadOpen] = React.useState(false);
   const [isWhatsAppOpen, setWhatsAppOpen] = React.useState(false);
+  const [isPropertyMatchOpen, setPropertyMatchOpen] = React.useState(false);
   const [activeContact, setActiveContact] = React.useState<Contact | null>(null);
+  const [matchingContact, setMatchingContact] = React.useState<Contact | null>(null);
   const [editingContact, setEditingContact] = React.useState<Contact | null>(null);
   const [viewingContact, setViewingContact] = React.useState<Contact | null>(null);
   const [isPending, startTransition] = React.useTransition();
@@ -87,6 +98,10 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
   React.useEffect(() => {
     setIsClient(true);
   }, []);
+
+  React.useEffect(() => {
+    setContacts(initialContacts);
+  }, [initialContacts]);
 
   const { toast } = useToast();
 
@@ -113,6 +128,11 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
     setActiveContact(contact);
     setWhatsAppOpen(true);
   };
+
+  const handlePropertyMatch = (contact: Contact) => {
+    setMatchingContact(contact);
+    setPropertyMatchOpen(true);
+  };
   
   const handleAddNew = () => {
     setEditingContact(null);
@@ -123,6 +143,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
     startTransition(async () => {
       const result = await deleteContact(id);
       if (result.success) {
+        setContacts((current) => current.filter((contact) => contact.id !== id));
         toast({ title: "Success", description: "Contact deleted successfully." });
         router.refresh();
       } else {
@@ -131,23 +152,30 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
     });
   };
 
+  const handleSaved = (savedContact: Contact) => {
+    setContacts((current) => {
+      const exists = current.some((contact) => contact.id === savedContact.id);
+      return exists
+        ? current.map((contact) => contact.id === savedContact.id ? savedContact : contact)
+        : [savedContact, ...current];
+    });
+    setEditingContact(savedContact);
+    setViewingContact((current) => current?.id === savedContact.id ? savedContact : current);
+    setActiveContact((current) => current?.id === savedContact.id ? savedContact : current);
+    setMatchingContact((current) => current?.id === savedContact.id ? savedContact : current);
+  };
+
   const sortedContacts = React.useMemo(() => {
-    return [...initialContacts].filter(contact => {
-      const query = searchQuery.toLowerCase();
+    return [...contacts].filter(contact => {
+      const query = searchQuery.trim().toLowerCase();
       const matchesSearch = (
-        contact.name.toLowerCase().includes(query) ||
-        (contact.email && contact.email.toLowerCase().includes(query)) ||
-        contact.phone.includes(query) ||
-        contact.status.toLowerCase().includes(query) ||
-        getContactLeadStage(contact).toLowerCase().includes(query) ||
-        contact.locationPreference?.toLowerCase().includes(query) ||
-        contact.serialNumber.toLowerCase().includes(query) ||
-        contact.city?.toLowerCase().includes(query) ||
-        contact.contactType?.toLowerCase().includes(query) ||
-        contactCreatorName(contact).toLowerCase().includes(query) ||
-        contactCreatorEmail(contact).toLowerCase().includes(query) ||
-        contact.referenceContact?.toLowerCase().includes(query) ||
-        contact.propertyPreference?.join(' ').toLowerCase().includes(query)
+        includesSearch(contact.name, query) ||
+        includesSearch(contact.email, query) ||
+        includesSearch(contact.phone, query) ||
+        includesSearch(getContactLeadStage(contact), query) ||
+        includesSearch(contact.locationPreference, query) ||
+        includesSearch(contact.city, query) ||
+        includesSearch(contact.requirementPurpose, query)
       );
       const matchesStage = stageFilter === 'All'
         || (contact.contactType === 'Buyer' && getContactLeadStage(contact) === stageFilter);
@@ -158,7 +186,10 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
       if(sortKey === 'budget') { aValue = budgetOrder[a.budget]; bValue = budgetOrder[b.budget]; } 
       else if (sortKey === 'status') { aValue = statusOrder[a.status]; bValue = statusOrder[b.status]; } 
       else if (sortKey === 'leadStage') { aValue = getContactLeadStage(a); bValue = getContactLeadStage(b); }
-      else if (sortKey === 'serialNumber') { aValue = parseInt(a.serialNumber.substring(1)); bValue = parseInt(b.serialNumber.substring(1)); } 
+      else if (sortKey === 'serialNumber') {
+        aValue = Number.parseInt(String(a.serialNumber ?? '').replace(/\D/g, ''), 10) || 0;
+        bValue = Number.parseInt(String(b.serialNumber ?? '').replace(/\D/g, ''), 10) || 0;
+      }
       else if (sortKey === 'createdAt' || sortKey === 'updatedAt') { aValue = new Date(a[sortKey]).getTime(); bValue = new Date(b[sortKey]).getTime(); }
       else if (sortKey === 'isActive') {
         aValue = a.isActive ?? true;
@@ -176,15 +207,15 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
       if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [initialContacts, sortKey, sortOrder, searchQuery, stageFilter]);
+  }, [contacts, sortKey, sortOrder, searchQuery, stageFilter]);
 
   const pipelineCounts = React.useMemo(() => {
     const counts = Object.fromEntries(leadStageOptions.map((stage) => [stage, 0])) as Record<LeadStage, number>;
-    initialContacts.forEach((contact) => {
+    contacts.forEach((contact) => {
       if (contact.contactType === 'Buyer') counts[getContactLeadStage(contact)] += 1;
     });
     return counts;
-  }, [initialContacts]);
+  }, [contacts]);
   
   const getSortIcon = (key: SortKey) => {
     if (sortKey !== key) return <ArrowUpDown className="ml-2 h-4 w-4 opacity-30" />;
@@ -205,6 +236,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
+                <RefreshButton className="w-full md:w-auto" />
             </div>
             <div className="flex flex-wrap gap-2">
                 <Button onClick={() => setBulkUploadOpen(true)} variant="outline">
@@ -226,7 +258,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
             onClick={() => setStageFilter('All')}
             className="shrink-0"
           >
-            All Contacts <Badge variant="secondary" className="ml-2">{initialContacts.length}</Badge>
+            All Contacts <Badge variant="secondary" className="ml-2">{contacts.length}</Badge>
           </Button>
           {leadStageOptions.map((stage) => (
             <Button
@@ -254,7 +286,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-semibold">{contact.name}</h3>
                   <Badge variant={contact.status.toLowerCase() as "hot" | "warm" | "cold"}>{contact.status}</Badge>
-                  {contact.contactType === 'Buyer' && <Badge variant="outline">{getContactLeadStage(contact)}</Badge>}
+                  {contact.contactType === 'Buyer' && <LeadStageBadge stage={getContactLeadStage(contact)} />}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">{contact.serialNumber}</p>
               </div>
@@ -274,6 +306,14 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                 <p>{contact.locationPreference || '—'}</p>
               </div>
               <div className="col-span-2">
+                <p className="text-xs text-muted-foreground">Requirement purpose</p>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {contact.requirementPurpose?.length
+                    ? contact.requirementPurpose.map((purpose) => <Badge key={purpose} variant="secondary">{purpose}</Badge>)
+                    : <span>—</span>}
+                </div>
+              </div>
+              <div className="col-span-2">
                 <p className="text-xs text-muted-foreground">Added by</p>
                 <p>{contactCreatorName(contact)}</p>
               </div>
@@ -282,6 +322,11 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
               <Button variant="ghost" size="icon" onClick={() => handleView(contact)} aria-label={`View ${contact.name}`}>
                 <Eye className="h-4 w-4"/>
               </Button>
+              {contact.contactType === 'Buyer' && (
+                <Button variant="ghost" size="icon" onClick={() => handlePropertyMatch(contact)} aria-label={`Find matching properties for ${contact.name}`} title="Find matching properties">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                </Button>
+              )}
               <Button variant="ghost" size="icon" onClick={() => handleWhatsApp(contact)} aria-label={`Create WhatsApp draft for ${contact.name}`}>
                 <MessageSquareText className="h-4 w-4 text-emerald-600"/>
               </Button>
@@ -326,6 +371,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                 <TableHead onClick={() => handleSort('city')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">City {getSortIcon('city')}</div></TableHead>
                 <TableHead onClick={() => handleSort('contactType')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Contact Type {getSortIcon('contactType')}</div></TableHead>
                 <TableHead onClick={() => handleSort('locationPreference')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Location Preference {getSortIcon('locationPreference')}</div></TableHead>
+                <TableHead onClick={() => handleSort('requirementPurpose')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Requirement Purpose {getSortIcon('requirementPurpose')}</div></TableHead>
                 <TableHead onClick={() => handleSort('referenceContact')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Reference {getSortIcon('referenceContact')}</div></TableHead>
                 <TableHead className="sticky top-0 bg-card"><div className="flex items-center">Property Preference</div></TableHead>
                 <TableHead onClick={() => handleSort('createdByName')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Added By {getSortIcon('createdByName')}</div></TableHead>
@@ -341,11 +387,16 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                     <TableCell className="font-mono text-muted-foreground">{contact.serialNumber}</TableCell>
                     <TableCell className="font-medium">{contact.name}</TableCell>
                     <TableCell><Badge variant={contact.status.toLowerCase() as "hot" | "warm" | "cold"}>{contact.status}</Badge></TableCell>
-                    <TableCell>{contact.contactType === 'Buyer' ? <Badge variant="outline">{getContactLeadStage(contact)}</Badge> : '—'}</TableCell>
+                    <TableCell>{contact.contactType === 'Buyer' ? <LeadStageBadge stage={getContactLeadStage(contact)} /> : '—'}</TableCell>
                     <TableCell>{contact.budget}</TableCell>
                     <TableCell>{contact.city}</TableCell>
                     <TableCell>{contact.contactType}</TableCell>
                     <TableCell>{contact.locationPreference}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {contact.requirementPurpose?.map(purpose => <Badge key={purpose} variant="secondary">{purpose}</Badge>)}
+                      </div>
+                    </TableCell>
                     <TableCell>{contact.referenceContact}</TableCell>
                     <TableCell>
                         <div className="flex flex-wrap gap-1">
@@ -362,6 +413,11 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                         <Button variant="ghost" size="icon" onClick={() => handleView(contact)} aria-label="View Contact">
                         <Eye className="h-4 w-4"/>
                         </Button>
+                        {contact.contactType === 'Buyer' && (
+                          <Button variant="ghost" size="icon" onClick={() => handlePropertyMatch(contact)} aria-label={`Find matching properties for ${contact.name}`} title="Find matching properties">
+                            <Sparkles className="h-4 w-4 text-primary" />
+                          </Button>
+                        )}
                         <Button variant="ghost" size="icon" onClick={() => handleWhatsApp(contact)} aria-label={`Create WhatsApp draft for ${contact.name}`}>
                         <MessageSquareText className="h-4 w-4 text-emerald-600"/>
                         </Button>
@@ -414,9 +470,10 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
         </div>
       </div>
       
-      <ContactForm isOpen={isFormOpen} onOpenChange={setFormOpen} contact={editingContact} allContacts={initialContacts} allListings={allListings} />
+      <ContactForm isOpen={isFormOpen} onOpenChange={setFormOpen} contact={editingContact} allContacts={contacts} allListings={allListings} onSaved={handleSaved} />
       {viewingContact && <ContactViewDialog isOpen={isViewOpen} onOpenChange={setViewOpen} contact={viewingContact} allListings={allListings} />}
       {activeContact && <ContactWhatsAppDialog isOpen={isWhatsAppOpen} onOpenChange={setWhatsAppOpen} contact={activeContact} listings={allListings} />}
+      {matchingContact && <PropertyMatchDialog isOpen={isPropertyMatchOpen} onOpenChange={setPropertyMatchOpen} contact={matchingContact} allListings={allListings} />}
       <BulkContactUploadDialog isOpen={isBulkUploadOpen} onOpenChange={setBulkUploadOpen} />
     </div>
   );

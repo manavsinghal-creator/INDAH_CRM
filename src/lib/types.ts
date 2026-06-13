@@ -12,6 +12,14 @@ export const budgetOptions = [
 export const statusOptions = ["Cold", "Warm", "Hot"] as const;
 export const contactTypeOptions = ["Buyer", "Seller"] as const;
 export const propertyTypeOptions = ["Apartment", "Villa", "Plot", "Commercial", "Other"] as const;
+export const requirementPurposeOptions = [
+  "Purchase for Self Use",
+  "Investment",
+  "Rent",
+  "Long-Term Rental",
+  "Short-Term Rental",
+  "Lease",
+] as const;
 export const leadStageOptions = [
   "New",
   "Contacted",
@@ -36,6 +44,7 @@ export const ContactSchema = z.object({
   contactType: z.enum(contactTypeOptions).optional(),
   leadStage: z.enum(leadStageOptions).optional().default("New"),
   locationPreference: z.string().optional(),
+  requirementPurpose: z.array(z.enum(requirementPurposeOptions)).optional().default([]),
   propertyPreference: z.array(z.string()).optional(),
   offeredListings: z.array(z.string()).optional(),
   notes: z.string().optional(),
@@ -220,7 +229,7 @@ export type ChannelPartner = z.infer<typeof ChannelPartnerSchema>;
 export const ChannelPartnerFormSchema = ChannelPartnerSchema.omit({ id: true, serialNumber: true, createdAt: true, updatedAt: true });
 export type ChannelPartnerFormData = z.infer<typeof ChannelPartnerFormSchema>;
 
-export type ActivityAction = 'created' | 'updated' | 'deleted' | 'whatsappDraftOpened' | 'signedIn';
+export type ActivityAction = 'created' | 'updated' | 'deleted' | 'whatsappDraftOpened' | 'emailDraftOpened' | 'signedIn';
 export type ActivityEntityType = 'contact' | 'listing' | 'channelPartner' | 'session';
 
 export type ActivityChange = {
@@ -271,6 +280,7 @@ export const QuickPropertyMatcherInputSchema = z.object({
 export const QuickPropertyMatcherOutputSchema = z.object({
   matchedListings: z.array(
     z.object({
+      recordId: z.string(),
       listingId: z.string(),
       listingName: z.string(),
       location: z.string(),
