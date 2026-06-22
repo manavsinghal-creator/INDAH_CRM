@@ -36,7 +36,6 @@ import {
   ContactFormSchema,
   ContactFormData,
   budgetOptions,
-  statusOptions,
   contactTypeOptions,
   leadStageOptions,
   propertyTypeOptions,
@@ -215,13 +214,6 @@ export function ContactForm({
               )} />
               <FormField control={form.control} name="phone" render={({ field }) => (
                 <FormItem><FormLabel>Phone Number</FormLabel><FormControl><Input placeholder="e.g. 9876543210" {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField control={form.control} name="status" render={({ field }) => (
-                <FormItem><FormLabel>Client Status</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select a status" /></SelectTrigger></FormControl>
-                    <SelectContent>{statusOptions.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent>
-                  </Select><FormMessage />
-                </FormItem>
               )} />
               <FormField control={form.control} name="budget" render={({ field }) => (
                 <FormItem><FormLabel>Preferred Budget (crores)</FormLabel>

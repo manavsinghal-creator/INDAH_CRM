@@ -5,11 +5,16 @@ import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import {
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE_SECONDS,
+  SESSION_REFRESH_COOKIE_NAME,
+  SESSION_REFRESH_MAX_AGE_SECONDS,
 } from '@/lib/auth-config';
 import { getAuthorizedUserFromToken } from '@/lib/auth-server';
 import { db, isCrmDatabaseConfigured } from '@/lib/firebase';
 
-const SessionSchema = z.object({ idToken: z.string().min(1) });
+const SessionSchema = z.object({
+  idToken: z.string().min(1),
+  refreshToken: z.string().min(1).optional(),
+});
 
 export async function POST(request: Request) {
   const parsed = SessionSchema.safeParse(await request.json());
@@ -36,7 +41,7 @@ export async function POST(request: Request) {
         entityLabel: user.email,
         changes: [
           { field: 'role', before: '—', after: user.role },
-          { field: 'sessionDuration', before: '—', after: '1 hour' },
+          { field: 'sessionDuration', before: '—', after: parsed.data.refreshToken ? '30 days' : '50 minutes' },
         ],
         createdAt: serverTimestamp(),
       });
@@ -53,12 +58,28 @@ export async function POST(request: Request) {
     path: '/',
     maxAge: SESSION_MAX_AGE_SECONDS,
   });
+  if (parsed.data.refreshToken) {
+    response.cookies.set(SESSION_REFRESH_COOKIE_NAME, parsed.data.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: SESSION_REFRESH_MAX_AGE_SECONDS,
+    });
+  }
   return response;
 }
 
 export async function DELETE() {
   const response = NextResponse.json({ success: true });
   response.cookies.set(SESSION_COOKIE_NAME, '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 0,
+  });
+  response.cookies.set(SESSION_REFRESH_COOKIE_NAME, '', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',

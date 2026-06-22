@@ -24,6 +24,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowRight, Lightbulb, ListTodo, User, Building, Phone, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import { RefreshButton } from '@/components/refresh-button';
+import { getContactLeadStage } from '@/lib/crm-status';
 
 const priorityVariantMap: Record<Task['priority'], 'destructive' | 'accent' | 'secondary'> = {
     High: 'destructive',
@@ -85,9 +86,9 @@ function generateTasks(contacts: Contact[], listings: Listing[]): Task[] {
     const tasks: Task[] = [];
     const now = new Date();
     const newThresholdDays = 3;
-    const hotLeadThresholdDays = 7;
-    const warmLeadStaleDays = 4;
-    const coldLeadReEngageDays = 7;
+    const qualifiedLeadThresholdDays = 7;
+    const contactedLeadStaleDays = 4;
+    const newLeadReEngageDays = 7;
 
     // Rule 1: New Lead Needs Attention
     contacts.forEach((contact, index) => {
@@ -106,13 +107,14 @@ function generateTasks(contacts: Contact[], listings: Listing[]): Task[] {
         }
     });
 
-    // Rule 2: Hot Lead Follow-up
+    // Rule 2: Qualified or Negotiating Lead Follow-up
     contacts.forEach((contact) => {
         const lastUpdatedDays = differenceInDays(now, parseISO(contact.updatedAt));
-        if (contact.status === 'Hot' && lastUpdatedDays > hotLeadThresholdDays) {
+        const leadStage = getContactLeadStage(contact);
+        if ((leadStage === 'Qualified' || leadStage === 'Negotiating') && lastUpdatedDays > qualifiedLeadThresholdDays) {
             tasks.push({
-                title: 'Follow Up with Hot Lead',
-                description: `${contact.name} is a hot lead but hasn't been updated in over a week. Time to check in.`,
+                title: 'Follow Up with Qualified Lead',
+                description: `${contact.name} is ${leadStage.toLowerCase()} but has not been updated in over a week. Time to check in.`,
                 category: 'Contact',
                 priority: 'High',
                 relatedId: contact.id,
@@ -123,13 +125,13 @@ function generateTasks(contacts: Contact[], listings: Listing[]): Task[] {
         }
     });
 
-    // Rule 3: Stale "Warm" Lead Check-in
+    // Rule 3: Contacted Lead Check-in
     contacts.forEach((contact) => {
         const lastUpdatedDays = differenceInDays(now, parseISO(contact.updatedAt));
-        if (contact.status === 'Warm' && lastUpdatedDays > warmLeadStaleDays) {
+        if (getContactLeadStage(contact) === 'Contacted' && lastUpdatedDays > contactedLeadStaleDays) {
             tasks.push({
-                title: 'Stale "Warm" Lead',
-                description: `It's been over a month since the last update for ${contact.name}. Check in to see if their needs have changed.`,
+                title: 'Contacted Lead Check-in',
+                description: `${contact.name} was contacted but has not been updated recently. Check in to see if their needs have changed.`,
                 category: 'Contact',
                 priority: 'Medium',
                 relatedId: contact.id,
@@ -140,13 +142,13 @@ function generateTasks(contacts: Contact[], listings: Listing[]): Task[] {
         }
     });
 
-    // Rule 4: Re-engage "Cold" Lead
+    // Rule 4: Re-engage Old New Lead
     contacts.forEach((contact) => {
         const lastUpdatedDays = differenceInDays(now, parseISO(contact.updatedAt));
-        if (contact.status === 'Cold' && lastUpdatedDays > coldLeadReEngageDays) {
+        if (getContactLeadStage(contact) === 'New' && lastUpdatedDays > newLeadReEngageDays) {
             tasks.push({
-                title: 'Re-engage Cold Lead',
-                description: `${contact.name} has been cold for over 2 months. Consider reaching out with a new opportunity to revive interest.`,
+                title: 'Move New Lead Forward',
+                description: `${contact.name} is still marked as new after a week. Review and move them to the right pipeline stage.`,
                 category: 'Contact',
                 priority: 'Low',
                 relatedId: contact.id,
@@ -161,8 +163,7 @@ function generateTasks(contacts: Contact[], listings: Listing[]): Task[] {
     contacts.forEach((contact) => {
         const lastUpdatedDays = differenceInDays(now, parseISO(contact.updatedAt));
         if (contact.offeredListings && contact.offeredListings.length > 0 && lastUpdatedDays > 7) {
-            // Avoid creating duplicate tasks if a 'Hot' or 'Warm' lead task already exists for the same reason
-            const alreadyHasFollowUpTask = tasks.some(t => t.relatedId === contact.id && (t.title.includes('Hot Lead') || t.title.includes('Warm Lead')));
+            const alreadyHasFollowUpTask = tasks.some(t => t.relatedId === contact.id && (t.title.includes('Qualified Lead') || t.title.includes('Contacted Lead')));
             if (!alreadyHasFollowUpTask) {
                 tasks.push({
                     title: 'Feedback on Offered Listings',

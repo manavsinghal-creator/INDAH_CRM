@@ -37,6 +37,7 @@ const activityLogsCollection = collection(db, 'activityLogs');
 function withLegacyContactOwnership(contact: Contact): Contact {
     return {
         ...contact,
+        budget: String(contact.budget) === '>10' ? '10-20' : contact.budget,
         leadStage: contact.leadStage || 'New',
         requirementPurpose: contact.requirementPurpose || [],
         createdByName: contact.createdByName || 'Admin',

@@ -6,7 +6,9 @@ export const budgetOptions = [
   "1-3",
   "3-6",
   "6-10",
-  ">10",
+  "10-20",
+  "20-30",
+  ">30",
 ] as const;
 
 export const statusOptions = ["Cold", "Warm", "Hot"] as const;
@@ -38,7 +40,10 @@ export const ContactSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters."),
   email: z.string().email("Invalid email address.").optional().or(z.literal('')),
   phone: z.string().min(10, "Phone number must be at least 10 digits."),
-  budget: z.enum(budgetOptions, { required_error: "Budget is required." }),
+  budget: z.preprocess(
+    (value) => value === ">10" ? "10-20" : value,
+    z.enum(budgetOptions, { required_error: "Budget is required." }),
+  ),
   status: z.enum(statusOptions, { required_error: "Status is required." }),
   city: z.string().optional(),
   contactType: z.enum(contactTypeOptions).optional(),
