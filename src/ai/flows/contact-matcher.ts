@@ -57,7 +57,7 @@ type RankedContact = {
   concernFactors: string[];
 };
 
-const budgetBands = ['<1', '1-3', '3-6', '6-10', '>10'] as const;
+const budgetBands = ['<1', '1-3', '3-6', '6-10', '10-20', '20-30', '>30'] as const;
 
 function normalize(value?: string) {
   return (value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -90,7 +90,11 @@ function scoreContact(contact: Contact, listing: Listing): RankedContact {
         ? 2
         : listing.basePrice <= 10
           ? 3
-          : 4;
+          : listing.basePrice <= 20
+            ? 4
+            : listing.basePrice <= 30
+              ? 5
+              : 6;
   const budgetDistance = Math.abs(contactBudgetIndex - listingBudgetIndex);
 
   if (budgetDistance === 0) {

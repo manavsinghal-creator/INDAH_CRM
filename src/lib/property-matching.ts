@@ -9,7 +9,7 @@ export type RankedListing = {
   concernFactors: string[];
 };
 
-const budgetBands = ['<1', '1-3', '3-6', '6-10', '>10'] as const;
+const budgetBands = ['<1', '1-3', '3-6', '6-10', '10-20', '20-30', '>30'] as const;
 
 export function normalizeMatchText(value?: string) {
   return (value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -33,7 +33,9 @@ function listingBudgetBand(listing: Listing) {
   if (listing.basePrice <= 3) return 1;
   if (listing.basePrice <= 6) return 2;
   if (listing.basePrice <= 10) return 3;
-  return 4;
+  if (listing.basePrice <= 20) return 4;
+  if (listing.basePrice <= 30) return 5;
+  return 6;
 }
 
 export function scoreListingForContact(listing: Listing, contact: Contact): RankedListing {

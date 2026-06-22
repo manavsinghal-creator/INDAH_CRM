@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { SESSION_COOKIE_NAME } from '@/lib/auth-config';
+import { SESSION_COOKIE_NAME, SESSION_REFRESH_COOKIE_NAME } from '@/lib/auth-config';
 
 export function middleware(request: NextRequest) {
-  if (request.cookies.has(SESSION_COOKIE_NAME)) return NextResponse.next();
+  if (request.cookies.has(SESSION_COOKIE_NAME) || request.cookies.has(SESSION_REFRESH_COOKIE_NAME)) return NextResponse.next();
 
   const loginUrl = new URL('/login', request.url);
   loginUrl.searchParams.set('next', `${request.nextUrl.pathname}${request.nextUrl.search}`);

@@ -49,7 +49,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from './ui/skeleton';
-import { format } from 'date-fns';
 import { Input } from './ui/input';
 import { ContactViewDialog } from './contact-view-dialog';
 import { useRouter } from 'next/navigation';
@@ -60,21 +59,37 @@ import { getContactLeadStage } from '@/lib/crm-status';
 import { LeadStageBadge } from './lead-stage-badge';
 import { PropertyMatchDialog } from './property-match-dialog';
 import { RefreshButton } from './refresh-button';
+import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 
-type SortKey = keyof Pick<Contact, 'serialNumber' | 'name' | 'status' | 'leadStage' | 'budget' | 'city' | 'locationPreference' | 'requirementPurpose' | 'createdAt' | 'updatedAt' | 'propertyPreference' | 'contactType' | 'referenceContact' | 'isActive' | 'createdByName'>;
+type SortKey = keyof Pick<Contact, 'serialNumber' | 'name' | 'leadStage' | 'budget' | 'city' | 'locationPreference' | 'createdAt' | 'updatedAt' | 'propertyPreference' | 'contactType' | 'isActive'>;
+type ContactDashboardTab = 'Buyer' | 'Seller';
+type ContactListActions = 'view' | 'match' | 'whatsapp' | 'email' | 'edit' | 'delete';
+
+const CONTACT_NAME_LIMIT = 16;
 
 const budgetOrder: Record<Contact['budget'], number> = {
-  "<1": 1, "1-3": 2, "3-6": 3, "6-10": 4, ">10": 5
+  "<1": 1, "1-3": 2, "3-6": 3, "6-10": 4, "10-20": 5, "20-30": 6, ">30": 7
 };
 
-const statusOrder: Record<Contact['status'], number> = { "Cold": 1, "Warm": 2, "Hot": 3 };
-
-const contactCreatorName = (contact: Contact) => contact.createdByName || 'Admin';
-const contactCreatorEmail = (contact: Contact) => contact.createdByEmail || 'manavsinghal@gmail.com';
 const includesSearch = (value: unknown, query: string) => {
   const searchableValue = Array.isArray(value) ? value.join(' ') : value;
   return String(searchableValue ?? '').toLowerCase().includes(query);
 };
+const truncateText = (value = '', maxLength = CONTACT_NAME_LIMIT) => (
+  value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value
+);
+const contactSurfaceClass = (contact: Contact) => {
+  if (contact.isActive === false) return 'bg-destructive/10';
+  if (contact.contactType === 'Seller') return 'bg-muted/40';
+  return 'bg-card';
+};
+const contactRowClass = (contact: Contact) => {
+  if (contact.isActive === false) return 'bg-destructive/10 text-destructive-foreground hover:bg-destructive/20';
+  if (contact.contactType === 'Seller') return 'bg-muted/40 hover:bg-muted/60';
+  return 'bg-card hover:bg-muted/50';
+};
+const stickyNameCellClass = (contact: Contact, className = '') => cn('sticky left-0 z-[1]', contactSurfaceClass(contact), className);
+const stickyNameHeaderClass = (className = '') => cn('sticky left-0 z-20 bg-card', className);
 
 export function ContactList({ initialContacts, allListings }: { initialContacts: Contact[], allListings: Listing[] }) {
   const [contacts, setContacts] = React.useState(initialContacts);
@@ -82,6 +97,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
   const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('asc');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [stageFilter, setStageFilter] = React.useState<'All' | LeadStage>('All');
+  const [activeTab, setActiveTab] = React.useState<ContactDashboardTab>('Buyer');
   const [isFormOpen, setFormOpen] = React.useState(false);
   const [isViewOpen, setViewOpen] = React.useState(false);
   const [isBulkUploadOpen, setBulkUploadOpen] = React.useState(false);
@@ -104,6 +120,25 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
   }, [initialContacts]);
 
   const { toast } = useToast();
+
+  const buyerCount = React.useMemo(
+    () => contacts.filter((contact) => contact.contactType !== 'Seller').length,
+    [contacts]
+  );
+  const sellerCount = React.useMemo(
+    () => contacts.filter((contact) => contact.contactType === 'Seller').length,
+    [contacts]
+  );
+  const newContactInitialValues = React.useMemo(
+    () => ({ contactType: activeTab }),
+    [activeTab]
+  );
+
+  const handleTabChange = (value: string) => {
+    const nextTab = value as ContactDashboardTab;
+    setActiveTab(nextTab);
+    setStageFilter('All');
+  };
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -168,6 +203,9 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
   const sortedContacts = React.useMemo(() => {
     return [...contacts].filter(contact => {
       const query = searchQuery.trim().toLowerCase();
+      const matchesTab = activeTab === 'Buyer'
+        ? contact.contactType !== 'Seller'
+        : contact.contactType === 'Seller';
       const matchesSearch = (
         includesSearch(contact.name, query) ||
         includesSearch(contact.email, query) ||
@@ -177,14 +215,14 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
         includesSearch(contact.city, query) ||
         includesSearch(contact.requirementPurpose, query)
       );
-      const matchesStage = stageFilter === 'All'
+      const matchesStage = activeTab === 'Seller'
+        || stageFilter === 'All'
         || (contact.contactType === 'Buyer' && getContactLeadStage(contact) === stageFilter);
-      return matchesSearch && matchesStage;
+      return matchesTab && matchesSearch && matchesStage;
     }).sort((a, b) => {
       let aValue: any, bValue: any;
 
       if(sortKey === 'budget') { aValue = budgetOrder[a.budget]; bValue = budgetOrder[b.budget]; } 
-      else if (sortKey === 'status') { aValue = statusOrder[a.status]; bValue = statusOrder[b.status]; } 
       else if (sortKey === 'leadStage') { aValue = getContactLeadStage(a); bValue = getContactLeadStage(b); }
       else if (sortKey === 'serialNumber') {
         aValue = Number.parseInt(String(a.serialNumber ?? '').replace(/\D/g, ''), 10) || 0;
@@ -195,10 +233,6 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
         aValue = a.isActive ?? true;
         bValue = b.isActive ?? true;
       }
-      else if (sortKey === 'createdByName') {
-        aValue = contactCreatorName(a);
-        bValue = contactCreatorName(b);
-      }
       else { aValue = a[sortKey]; bValue = b[sortKey]; }
       
       if (aValue === undefined) return 1;
@@ -207,7 +241,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
       if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [contacts, sortKey, sortOrder, searchQuery, stageFilter]);
+  }, [activeTab, contacts, sortKey, sortOrder, searchQuery, stageFilter]);
 
   const pipelineCounts = React.useMemo(() => {
     const counts = Object.fromEntries(leadStageOptions.map((stage) => [stage, 0])) as Record<LeadStage, number>;
@@ -222,6 +256,50 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
     return sortOrder === 'asc' ? <ArrowUp className="ml-2 h-4 w-4" /> : <ArrowDown className="ml-2 h-4 w-4" />;
   };
 
+  const renderContactActions = (contact: Contact, visibleActions: ContactListActions[] = ['view', 'match', 'whatsapp']) => (
+    <div className="flex items-center justify-start gap-1">
+      {visibleActions.includes('view') && (
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleView(contact)} aria-label={`View ${contact.name}`}>
+          <Eye className="h-4 w-4"/>
+        </Button>
+      )}
+      {visibleActions.includes('match') && contact.contactType === 'Buyer' && (
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handlePropertyMatch(contact)} aria-label={`Find matching properties for ${contact.name}`} title="Find matching properties">
+          <Sparkles className="h-4 w-4 text-primary" />
+        </Button>
+      )}
+      {visibleActions.includes('whatsapp') && (
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleWhatsApp(contact)} aria-label={`Create WhatsApp draft for ${contact.name}`}>
+          <MessageSquareText className="h-4 w-4 text-emerald-600"/>
+        </Button>
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`More actions for ${contact.name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {contact.email ? (
+            <DropdownMenuItem asChild><a href={`mailto:${contact.email}`}><Mail className="mr-2 h-4 w-4" /> Send Email</a></DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem disabled><Mail className="mr-2 h-4 w-4" /> Send Email</DropdownMenuItem>
+          )}
+          <DropdownMenuItem onClick={() => handleEdit(contact)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+          <AlertDialog>
+            <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive focus:bg-destructive/10 focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" />Delete</DropdownMenuItem></AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                <AlertDialogDescription>This will permanently delete the contact for {contact.name}.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => handleDelete(contact.id)} disabled={isPending}>{isPending ? 'Deleting...' : 'Delete'}</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
         <div className="space-y-4">
@@ -230,7 +308,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                 <div className="relative w-full md:w-80">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input 
-                        placeholder="Search contacts..."
+                        placeholder={`Search ${activeTab.toLowerCase()}s...`}
                         className="pl-9"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -249,6 +327,18 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
             </div>
         </div>
 
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
+        <TabsList className="grid w-full grid-cols-2 md:w-[360px]">
+          <TabsTrigger value="Buyer" className="gap-2">
+            Buyers <Badge variant="secondary">{buyerCount}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="Seller" className="gap-2">
+            Sellers <Badge variant="secondary">{sellerCount}</Badge>
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {activeTab === 'Buyer' && (
       <section aria-label="Buyer lead pipeline" className="border-y bg-muted/20 py-3">
         <div className="flex gap-2 overflow-x-auto px-1 pb-1">
           <Button
@@ -258,7 +348,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
             onClick={() => setStageFilter('All')}
             className="shrink-0"
           >
-            All Contacts <Badge variant="secondary" className="ml-2">{contacts.length}</Badge>
+            All Buyers <Badge variant="secondary" className="ml-2">{buyerCount}</Badge>
           </Button>
           {leadStageOptions.map((stage) => (
             <Button
@@ -274,29 +364,37 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
           ))}
         </div>
       </section>
+      )}
 
       <div className="space-y-3 md:hidden">
         {isClient && sortedContacts.map((contact) => (
           <article key={contact.id} className={cn(
-            'rounded-md border bg-card p-4',
+            'rounded-md border p-4',
+            contact.contactType === 'Seller' ? 'bg-muted/40' : 'bg-card',
             contact.isActive === false && 'border-destructive/30 bg-destructive/5',
           )}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-semibold">{contact.name}</h3>
-                  <Badge variant={contact.status.toLowerCase() as "hot" | "warm" | "cold"}>{contact.status}</Badge>
+                  <h3 className="max-w-[190px] truncate font-semibold" title={contact.name}>{truncateText(contact.name)}</h3>
                   {contact.contactType === 'Buyer' && <LeadStageBadge stage={getContactLeadStage(contact)} />}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">{contact.serialNumber}</p>
               </div>
-              <span className="shrink-0 text-sm font-medium">{contact.budget} Cr</span>
+              {contact.contactType === 'Buyer' && <span className="shrink-0 text-sm font-medium">{contact.budget} Cr</span>}
             </div>
             <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <p className="text-xs text-muted-foreground">Type</p>
-                <p>{contact.contactType || '—'}</p>
-              </div>
+              {contact.contactType === 'Buyer' ? (
+                <div>
+                  <p className="text-xs text-muted-foreground">Budget</p>
+                  <p>{contact.budget} Cr</p>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-xs text-muted-foreground">Linked listings</p>
+                  <p>{contact.offeredListings?.length || 0}</p>
+                </div>
+              )}
               <div>
                 <p className="text-xs text-muted-foreground">City</p>
                 <p>{contact.city || '—'}</p>
@@ -306,162 +404,95 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                 <p>{contact.locationPreference || '—'}</p>
               </div>
               <div className="col-span-2">
-                <p className="text-xs text-muted-foreground">Requirement purpose</p>
+                <p className="text-xs text-muted-foreground">Property type</p>
                 <div className="mt-1 flex flex-wrap gap-1">
-                  {contact.requirementPurpose?.length
-                    ? contact.requirementPurpose.map((purpose) => <Badge key={purpose} variant="secondary">{purpose}</Badge>)
+                  {contact.propertyPreference?.length
+                    ? contact.propertyPreference.map(pref => <Badge key={pref} variant="secondary">{pref}</Badge>)
                     : <span>—</span>}
                 </div>
               </div>
-              <div className="col-span-2">
-                <p className="text-xs text-muted-foreground">Added by</p>
-                <p>{contactCreatorName(contact)}</p>
-              </div>
             </div>
             <div className="mt-4 flex items-center gap-1 border-t pt-3">
-              <Button variant="ghost" size="icon" onClick={() => handleView(contact)} aria-label={`View ${contact.name}`}>
-                <Eye className="h-4 w-4"/>
-              </Button>
-              {contact.contactType === 'Buyer' && (
-                <Button variant="ghost" size="icon" onClick={() => handlePropertyMatch(contact)} aria-label={`Find matching properties for ${contact.name}`} title="Find matching properties">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                </Button>
-              )}
-              <Button variant="ghost" size="icon" onClick={() => handleWhatsApp(contact)} aria-label={`Create WhatsApp draft for ${contact.name}`}>
-                <MessageSquareText className="h-4 w-4 text-emerald-600"/>
-              </Button>
-              <Button variant="ghost" size="icon" asChild>
-                <a href={`mailto:${contact.email}`} aria-label={`Email ${contact.name}`}><Mail className="h-4 w-4" /></a>
-              </Button>
-              <Button variant="ghost" size="icon" onClick={() => handleEdit(contact)} aria-label={`Edit ${contact.name}`}>
-                <Edit className="h-4 w-4" />
-              </Button>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="ghost" size="icon" className="ml-auto text-destructive" aria-label={`Delete ${contact.name}`}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                    <AlertDialogDescription>This will permanently delete the contact for {contact.name}.</AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => handleDelete(contact.id)} disabled={isPending}>{isPending ? 'Deleting...' : 'Delete'}</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              {renderContactActions(contact, contact.contactType === 'Buyer' ? ['view', 'match', 'whatsapp'] : ['view', 'whatsapp'])}
             </div>
           </article>
         ))}
+        {isClient && sortedContacts.length === 0 && (
+          <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+            No {activeTab.toLowerCase()} contacts found.
+          </div>
+        )}
       </div>
 
       <div className="hidden rounded-xl border bg-card text-card-foreground shadow md:block">
         <div className="relative max-h-[calc(100vh-22rem)] overflow-auto">
-          <Table>
+          <Table className={cn('table-fixed', activeTab === 'Buyer' ? 'min-w-[960px]' : 'min-w-[820px]')}>
             <TableHeader className="sticky top-0 bg-card z-10">
               <TableRow>
-                <TableHead onClick={() => handleSort('serialNumber')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors w-[100px]"><div className="flex items-center">Serial No. {getSortIcon('serialNumber')}</div></TableHead>
-                <TableHead onClick={() => handleSort('name')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Name {getSortIcon('name')}</div></TableHead>
-                <TableHead onClick={() => handleSort('status')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors w-[120px]"><div className="flex items-center">Status {getSortIcon('status')}</div></TableHead>
-                <TableHead onClick={() => handleSort('leadStage')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Pipeline {getSortIcon('leadStage')}</div></TableHead>
-                <TableHead onClick={() => handleSort('budget')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Budget (Crores) {getSortIcon('budget')}</div></TableHead>
-                <TableHead onClick={() => handleSort('city')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">City {getSortIcon('city')}</div></TableHead>
-                <TableHead onClick={() => handleSort('contactType')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Contact Type {getSortIcon('contactType')}</div></TableHead>
-                <TableHead onClick={() => handleSort('locationPreference')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Location Preference {getSortIcon('locationPreference')}</div></TableHead>
-                <TableHead onClick={() => handleSort('requirementPurpose')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Requirement Purpose {getSortIcon('requirementPurpose')}</div></TableHead>
-                <TableHead onClick={() => handleSort('referenceContact')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Reference {getSortIcon('referenceContact')}</div></TableHead>
-                <TableHead className="sticky top-0 bg-card"><div className="flex items-center">Property Preference</div></TableHead>
-                <TableHead onClick={() => handleSort('createdByName')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Added By {getSortIcon('createdByName')}</div></TableHead>
-                <TableHead onClick={() => handleSort('updatedAt')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors w-[150px]"><div className="flex items-center">Last Updated {getSortIcon('updatedAt')}</div></TableHead>
-                <TableHead className="sticky top-0 bg-card text-right w-[150px]">Actions</TableHead>
+                <TableHead onClick={() => handleSort('name')} className={stickyNameHeaderClass('w-[150px] min-w-[150px] max-w-[150px] cursor-pointer transition-colors hover:bg-muted/50')}><div className="flex items-center">Name {getSortIcon('name')}</div></TableHead>
+                <TableHead onClick={() => handleSort('serialNumber')} className="w-[104px] min-w-[104px] cursor-pointer transition-colors hover:bg-muted/50"><div className="flex items-center">Serial No. {getSortIcon('serialNumber')}</div></TableHead>
+                {activeTab === 'Buyer' && (
+                  <>
+                    <TableHead onClick={() => handleSort('leadStage')} className="w-[144px] min-w-[144px] cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Pipeline {getSortIcon('leadStage')}</div></TableHead>
+                    <TableHead onClick={() => handleSort('budget')} className="w-[136px] min-w-[136px] cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Budget (Crores) {getSortIcon('budget')}</div></TableHead>
+                  </>
+                )}
+                <TableHead onClick={() => handleSort('city')} className="w-[120px] min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">City {getSortIcon('city')}</div></TableHead>
+                <TableHead onClick={() => handleSort('locationPreference')} className="min-w-[190px] cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">{activeTab === 'Buyer' ? 'Location Preference' : 'Area / Location'} {getSortIcon('locationPreference')}</div></TableHead>
+                <TableHead className="min-w-[176px]"><div className="flex items-center">Property Type</div></TableHead>
+                {activeTab === 'Seller' && <TableHead className="w-[128px] min-w-[128px]">Linked Listings</TableHead>}
+                <TableHead className="w-[176px] min-w-[176px] text-left">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isClient && sortedContacts.map(contact => (
-                <TableRow key={contact.id} className={cn(
-                    (contact.isActive === false) && 'bg-destructive/10 text-destructive-foreground hover:bg-destructive/20',
-                )}>
-                    <TableCell className="font-mono text-muted-foreground">{contact.serialNumber}</TableCell>
-                    <TableCell className="font-medium">{contact.name}</TableCell>
-                    <TableCell><Badge variant={contact.status.toLowerCase() as "hot" | "warm" | "cold"}>{contact.status}</Badge></TableCell>
-                    <TableCell>{contact.contactType === 'Buyer' ? <LeadStageBadge stage={getContactLeadStage(contact)} /> : '—'}</TableCell>
-                    <TableCell>{contact.budget}</TableCell>
-                    <TableCell>{contact.city}</TableCell>
-                    <TableCell>{contact.contactType}</TableCell>
-                    <TableCell>{contact.locationPreference}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {contact.requirementPurpose?.map(purpose => <Badge key={purpose} variant="secondary">{purpose}</Badge>)}
-                      </div>
+                <TableRow key={contact.id} className={contactRowClass(contact)}>
+                    <TableCell className={stickyNameCellClass(contact, 'w-[150px] min-w-[150px] max-w-[150px] font-medium')}>
+                      <span className="block truncate" title={contact.name}>{truncateText(contact.name)}</span>
                     </TableCell>
-                    <TableCell>{contact.referenceContact}</TableCell>
+                    <TableCell className="w-[104px] min-w-[104px] font-mono text-muted-foreground">{contact.serialNumber}</TableCell>
+                    {activeTab === 'Buyer' && (
+                      <>
+                        <TableCell><LeadStageBadge stage={getContactLeadStage(contact)} /></TableCell>
+                        <TableCell>{contact.budget}</TableCell>
+                      </>
+                    )}
+                    <TableCell>{contact.city}</TableCell>
+                    <TableCell>{contact.locationPreference}</TableCell>
                     <TableCell>
                         <div className="flex flex-wrap gap-1">
                             {contact.propertyPreference?.map(pref => <Badge key={pref} variant="secondary">{pref}</Badge>)}
                         </div>
                     </TableCell>
-                    <TableCell>
-                      <p className="font-medium">{contactCreatorName(contact)}</p>
-                      <p className="text-xs text-muted-foreground">{contactCreatorEmail(contact)}</p>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">{format(new Date(contact.updatedAt), "dd MMM yyyy")}</TableCell>
-                    <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => handleView(contact)} aria-label="View Contact">
-                        <Eye className="h-4 w-4"/>
-                        </Button>
-                        {contact.contactType === 'Buyer' && (
-                          <Button variant="ghost" size="icon" onClick={() => handlePropertyMatch(contact)} aria-label={`Find matching properties for ${contact.name}`} title="Find matching properties">
-                            <Sparkles className="h-4 w-4 text-primary" />
-                          </Button>
-                        )}
-                        <Button variant="ghost" size="icon" onClick={() => handleWhatsApp(contact)} aria-label={`Create WhatsApp draft for ${contact.name}`}>
-                        <MessageSquareText className="h-4 w-4 text-emerald-600"/>
-                        </Button>
-                        <Button variant="ghost" size="icon" asChild>
-                        <a href={`mailto:${contact.email}`} aria-label="Send email"><Mail className="h-4 w-4" /></a>
-                        </Button>
-                        <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleEdit(contact)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
-                            <AlertDialog>
-                            <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive focus:bg-destructive/10 focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" />Delete</DropdownMenuItem></AlertDialogTrigger>
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                <AlertDialogDescription>This will permanently delete the contact for {contact.name}.</AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => handleDelete(contact.id)} disabled={isPending}>{isPending ? 'Deleting...' : 'Delete'}</AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                            </AlertDialog>
-                        </DropdownMenuContent>
-                        </DropdownMenu>
-                    </div>
+                    {activeTab === 'Seller' && <TableCell>{contact.offeredListings?.length || 0}</TableCell>}
+                    <TableCell className="w-[176px] min-w-[176px]">
+                      {renderContactActions(contact, activeTab === 'Buyer' ? ['view', 'match', 'whatsapp'] : ['view', 'whatsapp'])}
                     </TableCell>
                 </TableRow>
                 ))}
+                {isClient && sortedContacts.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={activeTab === 'Buyer' ? 8 : 7} className="h-24 text-center text-muted-foreground">
+                      No {activeTab.toLowerCase()} contacts found.
+                    </TableCell>
+                  </TableRow>
+                )}
                 {!isClient && (
                     Array.from({ length: 10 }).map((_, i) => (
                         <TableRow key={i}>
+                            <TableCell className="sticky left-0 bg-card"><Skeleton className="h-5 w-24"/></TableCell>
                             <TableCell><Skeleton className="h-5 w-10"/></TableCell>
+                            {activeTab === 'Buyer' && (
+                              <>
+                                <TableCell><Skeleton className="h-5 w-24"/></TableCell>
+                                <TableCell><Skeleton className="h-5 w-24"/></TableCell>
+                              </>
+                            )}
+                            <TableCell><Skeleton className="h-5 w-24"/></TableCell>
                             <TableCell><Skeleton className="h-5 w-32"/></TableCell>
-                            <TableCell><Skeleton className="h-5 w-20"/></TableCell>
                             <TableCell><Skeleton className="h-5 w-24"/></TableCell>
-                            <TableCell><Skeleton className="h-5 w-24"/></TableCell>
-                            <TableCell><Skeleton className="h-5 w-24"/></TableCell>
-                            <TableCell><Skeleton className="h-5 w-32"/></TableCell>
-                            <TableCell><Skeleton className="h-5 w-32"/></TableCell>
-                            <TableCell><Skeleton className="h-5 w-24"/></TableCell>
-                            <TableCell><Skeleton className="h-5 w-24"/></TableCell>
-                            <TableCell><Skeleton className="h-5 w-24"/></TableCell>
-                            <TableCell><div className="flex justify-end gap-2"><Skeleton className="h-8 w-8"/><Skeleton className="h-8 w-8"/></div></TableCell>
+                            {activeTab === 'Seller' && <TableCell><Skeleton className="h-5 w-10"/></TableCell>}
+                            <TableCell><div className="flex justify-start gap-2"><Skeleton className="h-8 w-8"/><Skeleton className="h-8 w-8"/><Skeleton className="h-8 w-8"/></div></TableCell>
                         </TableRow>
                     ))
                 )}
@@ -470,7 +501,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
         </div>
       </div>
       
-      <ContactForm isOpen={isFormOpen} onOpenChange={setFormOpen} contact={editingContact} allContacts={contacts} allListings={allListings} onSaved={handleSaved} />
+      <ContactForm isOpen={isFormOpen} onOpenChange={setFormOpen} contact={editingContact} allContacts={contacts} allListings={allListings} onSaved={handleSaved} initialValues={newContactInitialValues} />
       {viewingContact && <ContactViewDialog isOpen={isViewOpen} onOpenChange={setViewOpen} contact={viewingContact} allListings={allListings} />}
       {activeContact && <ContactWhatsAppDialog isOpen={isWhatsAppOpen} onOpenChange={setWhatsAppOpen} contact={activeContact} listings={allListings} />}
       {matchingContact && <PropertyMatchDialog isOpen={isPropertyMatchOpen} onOpenChange={setPropertyMatchOpen} contact={matchingContact} allListings={allListings} />}

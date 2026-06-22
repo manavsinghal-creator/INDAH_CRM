@@ -6,6 +6,7 @@ import {
   isPrimaryAdmin,
   normalizeEmail,
   SESSION_COOKIE_NAME,
+  SESSION_REFRESH_COOKIE_NAME,
 } from '@/lib/auth-config';
 
 export type SessionUser = {
@@ -43,6 +44,25 @@ export async function verifyFirebaseIdToken(idToken: string): Promise<FirebaseAc
   return payload.users?.[0] || null;
 }
 
+async function refreshFirebaseIdToken(refreshToken: string): Promise<string | null> {
+  const response = await fetch(
+    `https://securetoken.googleapis.com/v1/token?key=${firebaseApiKey()}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+      }),
+      cache: 'no-store',
+    },
+  );
+
+  if (!response.ok) return null;
+  const payload = await response.json();
+  return payload.id_token || null;
+}
+
 export async function getAuthorizedUserFromToken(idToken: string): Promise<SessionUser | null> {
   const account = await verifyFirebaseIdToken(idToken);
   if (!account?.email) return null;
@@ -60,12 +80,27 @@ export async function getSessionToken() {
   return (await cookies()).get(SESSION_COOKIE_NAME)?.value || null;
 }
 
+export async function getSessionRefreshToken() {
+  return (await cookies()).get(SESSION_REFRESH_COOKIE_NAME)?.value || null;
+}
+
 export async function getCurrentUser(): Promise<SessionUser | null> {
   const idToken = await getSessionToken();
-  if (!idToken) return null;
+  if (idToken) {
+    try {
+      const user = await getAuthorizedUserFromToken(idToken);
+      if (user) return user;
+    } catch {
+      // Try the longer-lived refresh cookie below.
+    }
+  }
+
+  const refreshToken = await getSessionRefreshToken();
+  if (!refreshToken) return null;
 
   try {
-    return await getAuthorizedUserFromToken(idToken);
+    const refreshedIdToken = await refreshFirebaseIdToken(refreshToken);
+    return refreshedIdToken ? await getAuthorizedUserFromToken(refreshedIdToken) : null;
   } catch {
     return null;
   }

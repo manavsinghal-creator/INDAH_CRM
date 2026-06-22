@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { Loader2, LogIn } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -8,7 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { getFirebaseAuth, isFirebaseConfigured } from '@/lib/firebase-auth-client';
+import { getPersistentFirebaseAuth, isFirebaseConfigured } from '@/lib/firebase-auth-client';
 
 export function LoginForm() {
   const router = useRouter();
@@ -18,6 +18,44 @@ export function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setLoading] = useState(false);
+  const [isRestoringSession, setRestoringSession] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function restoreSession() {
+      if (!isFirebaseConfigured || passwordChanged) return;
+
+      setRestoringSession(true);
+      try {
+        const auth = await getPersistentFirebaseAuth();
+        await auth.authStateReady();
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const idToken = await user.getIdToken();
+        const response = await fetch('/api/auth/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken, refreshToken: user.refreshToken }),
+        });
+        if (!response.ok || !isMounted) return;
+
+        router.replace(searchParams.get('next') || '/');
+        router.refresh();
+      } finally {
+        if (isMounted) setRestoringSession(false);
+      }
+    }
+
+    restoreSession().catch(() => {
+      if (isMounted) setRestoringSession(false);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [passwordChanged, router, searchParams]);
 
   async function signIn(event: FormEvent) {
     event.preventDefault();
@@ -29,12 +67,13 @@ export function LoginForm() {
         throw new Error('Firebase environment variables have not been added yet.');
       }
 
-      const result = await signInWithEmailAndPassword(getFirebaseAuth(), email.trim(), password);
+      const auth = await getPersistentFirebaseAuth();
+      const result = await signInWithEmailAndPassword(auth, email.trim(), password);
       const idToken = await result.user.getIdToken();
       const response = await fetch('/api/auth/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken }),
+        body: JSON.stringify({ idToken, refreshToken: result.user.refreshToken }),
       });
       const data = await response.json();
 
@@ -82,9 +121,9 @@ export function LoginForm() {
           required
         />
       </div>
-      <Button className="w-full" size="lg" type="submit" disabled={isLoading}>
-        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogIn className="mr-2 h-4 w-4" />}
-        Sign in
+      <Button className="w-full" size="lg" type="submit" disabled={isLoading || isRestoringSession}>
+        {isLoading || isRestoringSession ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogIn className="mr-2 h-4 w-4" />}
+        {isRestoringSession ? 'Restoring session...' : 'Sign in'}
       </Button>
       {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
     </form>

@@ -86,9 +86,6 @@ export function ContactViewDialog({ isOpen, onOpenChange, contact, allListings }
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <DetailItem label="Email Address" value={contact.email} />
                 <DetailItem label="Phone Number" value={contact.phone} />
-                <DetailItem label="Client Status">
-                    <Badge variant={contact.status.toLowerCase() as any} className="w-fit">{contact.status}</Badge>
-                </DetailItem>
                 <DetailItem label="Pipeline Stage">
                     <LeadStageBadge stage={getContactLeadStage(contact)} className="w-fit" />
                 </DetailItem>
