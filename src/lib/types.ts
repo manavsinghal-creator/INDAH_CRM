@@ -234,8 +234,8 @@ export type ChannelPartner = z.infer<typeof ChannelPartnerSchema>;
 export const ChannelPartnerFormSchema = ChannelPartnerSchema.omit({ id: true, serialNumber: true, createdAt: true, updatedAt: true });
 export type ChannelPartnerFormData = z.infer<typeof ChannelPartnerFormSchema>;
 
-export type ActivityAction = 'created' | 'updated' | 'deleted' | 'whatsappDraftOpened' | 'emailDraftOpened' | 'signedIn';
-export type ActivityEntityType = 'contact' | 'listing' | 'channelPartner' | 'session';
+export type ActivityAction = 'created' | 'updated' | 'deleted' | 'whatsappDraftOpened' | 'emailDraftOpened' | 'siteVisitLogged' | 'signedIn';
+export type ActivityEntityType = 'contact' | 'listing' | 'channelPartner' | 'siteVisit' | 'session';
 
 export type ActivityChange = {
   field: string;
@@ -254,6 +254,46 @@ export type ActivityLog = {
   changes: ActivityChange[];
   createdAt: string;
 };
+
+export const siteVisitOutcomeOptions = [
+  "Interested",
+  "Maybe",
+  "Not Interested",
+  "Needs Follow-up",
+  "Negotiation",
+] as const;
+export type SiteVisitOutcome = typeof siteVisitOutcomeOptions[number];
+
+export const SiteVisitSchema = z.object({
+  id: z.string(),
+  contactId: z.string().min(1, "Contact is required."),
+  contactName: z.string().min(1, "Contact name is required."),
+  listingIds: z.array(z.string()).default([]),
+  listingLabels: z.array(z.string()).default([]),
+  visitAt: z.string().min(1, "Visit time is required."),
+  outcome: z.enum(siteVisitOutcomeOptions).optional(),
+  notes: z.string().optional(),
+  followUpDate: z.string().optional(),
+  createdByName: z.string().optional(),
+  createdByEmail: z.string().email().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type SiteVisit = z.infer<typeof SiteVisitSchema>;
+
+export const SiteVisitFormSchema = SiteVisitSchema.omit({
+  id: true,
+  contactName: true,
+  listingLabels: true,
+  createdByName: true,
+  createdByEmail: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  updatePipeline: z.boolean().optional().default(true),
+});
+export type SiteVisitFormData = z.infer<typeof SiteVisitFormSchema>;
 
 // TASK GENERATOR (Rule-based)
 export const TaskSchema = z.object({

@@ -7,18 +7,20 @@ import { z } from 'zod';
 import { db, isCrmDatabaseConfigured } from '@/lib/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, serverTimestamp, getDoc } from 'firebase/firestore';
 
-import { ActivityAction, ActivityChange, ActivityEntityType, ActivityLog, Contact, ContactFormSchema, Listing, ListingFormSchema, ChannelPartner, ChannelPartnerFormSchema, GenerateDescriptionInputSchema, QuickPropertyMatcherInputSchema, budgetOptions, leadStageOptions, listingAvailabilityOptions, projectStatusOptions, propertyTypeOptions } from '@/lib/types';
+import { ActivityAction, ActivityChange, ActivityEntityType, ActivityLog, Contact, ContactFormSchema, Listing, ListingFormSchema, ChannelPartner, ChannelPartnerFormSchema, GenerateDescriptionInputSchema, QuickPropertyMatcherInputSchema, SiteVisit, SiteVisitFormSchema, budgetOptions, leadStageOptions, listingAvailabilityOptions, projectStatusOptions, propertyTypeOptions, type LeadStage } from '@/lib/types';
 import { QuickPropertyMatcherOutput } from '@/lib/types';
 import {
     addDemoChannelPartner,
     addDemoContact,
     addDemoListing,
+    addDemoSiteVisit,
     deleteDemoChannelPartner,
     deleteDemoContact,
     deleteDemoListing,
     demoChannelPartners,
     demoContacts,
     demoListings,
+    demoSiteVisits,
     updateDemoChannelPartner,
     updateDemoContact,
     updateDemoListing,
@@ -33,6 +35,7 @@ const contactsCollection = collection(db, 'contacts');
 const listingsCollection = collection(db, 'listings');
 const channelPartnersCollection = collection(db, 'channelPartners');
 const activityLogsCollection = collection(db, 'activityLogs');
+const siteVisitsCollection = collection(db, 'siteVisits');
 
 function withLegacyContactOwnership(contact: Contact): Contact {
     return {
@@ -121,7 +124,9 @@ export async function getActivityLogs(): Promise<ActivityLog[]> {
                     ? 'Contact'
                     : data.entityType === 'channelPartner'
                         ? 'Channel Partner'
-                        : 'Login Session';
+                        : data.entityType === 'siteVisit'
+                            ? 'Site Visit'
+                            : 'Login Session';
             return {
                 id: activityDoc.id,
                 userEmail: data.userEmail || '',
@@ -335,6 +340,68 @@ export async function updateContact(id: string, formData: z.infer<typeof Contact
     }
 }
 
+export async function updateContactLeadStage(id: string, leadStage: LeadStage): Promise<{ success: boolean; contact?: Contact; error?: string }> {
+    const user = await requireAuthorizedUser();
+    if (!leadStageOptions.includes(leadStage)) return { success: false, error: 'Invalid pipeline stage.' };
+
+    if (!isCrmDatabaseConfigured) {
+        const existing = demoContacts.find((contact) => contact.id === id);
+        if (!existing) return { success: false, error: 'Demo contact not found.' };
+        const contact = updateDemoContact(id, {
+            ...existing,
+            leadStage,
+        });
+        clearMatchCache();
+        revalidatePath('/');
+        return contact ? { success: true, contact } : { success: false, error: 'Demo contact not found.' };
+    }
+
+    try {
+        const contactRef = doc(db, 'contacts', id);
+        const beforeSnapshot = await getDoc(contactRef);
+        if (!beforeSnapshot.exists()) return { success: false, error: 'Contact not found.' };
+        const beforeData = beforeSnapshot.data();
+        const previousStage = beforeData.leadStage || 'New';
+        const updatedData = {
+            leadStage,
+            updatedByName: user.name,
+            updatedByEmail: user.email,
+            updatedAt: serverTimestamp(),
+        };
+        await updateDoc(contactRef, updatedData);
+        clearMatchCache();
+        revalidatePath('/');
+        const savedSnapshot = await getDoc(contactRef);
+        const savedData = savedSnapshot.data();
+        await logActivity({
+            userEmail: user.email,
+            userName: user.name,
+            action: 'updated',
+            entityType: 'contact',
+            entityId: id,
+            entityLabel: beforeData.name || 'Contact',
+            changes: displayActivityValue(previousStage) !== displayActivityValue(leadStage)
+                ? [{
+                    field: 'leadStage',
+                    before: displayActivityValue(previousStage),
+                    after: displayActivityValue(leadStage),
+                }]
+                : [],
+        });
+        return {
+            success: true,
+            contact: {
+                id,
+                ...savedData,
+                createdAt: savedData?.createdAt?.toDate().toISOString(),
+                updatedAt: savedData?.updatedAt?.toDate().toISOString(),
+            } as Contact,
+        };
+    } catch {
+        return { success: false, error: 'Failed to update pipeline stage.' };
+    }
+}
+
 export async function markContactPropertiesShared(
     id: string,
     listingIds: string[],
@@ -438,6 +505,142 @@ export async function deleteContact(id: string): Promise<{ success: boolean; err
         return { success: true };
     } catch (error) {
         return { success: false, error: 'Failed to delete contact.' };
+    }
+}
+
+// SITE VISIT ACTIONS
+export async function getSiteVisits(): Promise<SiteVisit[]> {
+    await requireAuthorizedUser();
+    noStore();
+    if (!isCrmDatabaseConfigured) return demoSiteVisits;
+
+    try {
+        const q = query(siteVisitsCollection, orderBy('visitAt', 'desc'), limit(300));
+        const querySnapshot = await getDocs(q);
+        return querySnapshot.docs.map((siteVisitDoc) => {
+            const data = siteVisitDoc.data();
+            return {
+                id: siteVisitDoc.id,
+                ...data,
+                createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
+                updatedAt: data.updatedAt?.toDate().toISOString() || new Date().toISOString(),
+            } as SiteVisit;
+        });
+    } catch (error) {
+        console.error('Failed to load site visits', error);
+        return [];
+    }
+}
+
+export async function addSiteVisit(formData: z.infer<typeof SiteVisitFormSchema>): Promise<{ success: boolean; siteVisit?: SiteVisit; contact?: Contact; error?: any }> {
+    const user = await requireAuthorizedUser();
+    const result = SiteVisitFormSchema.safeParse(formData);
+    if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
+
+    const contacts = await getContacts();
+    const listings = await getListings();
+    const contact = contacts.find((item) => item.id === result.data.contactId);
+    if (!contact) return { success: false, error: { contactId: ['Selected contact was not found.'] } };
+
+    const selectedListings = result.data.listingIds
+        .map((listingId) => listings.find((listing) => listing.id === listingId))
+        .filter((listing): listing is Listing => Boolean(listing));
+
+    const listingLabels = selectedListings.map((listing) => listing.listingId
+        ? `${listing.listingId} - ${listing.listingName}`
+        : listing.listingName);
+    const previousStage = getContactLeadStage(contact);
+    const shouldUpdatePipeline = result.data.updatePipeline !== false && previousStage !== 'Site Visit';
+
+    if (!isCrmDatabaseConfigured) {
+        const siteVisit = addDemoSiteVisit(result.data, contact.name, listingLabels);
+        const updatedContact = shouldUpdatePipeline
+            ? updateDemoContact(contact.id, { ...contact, leadStage: 'Site Visit' })
+            : contact;
+        clearMatchCache();
+        revalidatePath('/');
+        revalidatePath('/site-visits');
+        revalidatePath('/activity');
+        return { success: true, siteVisit, contact: updatedContact || contact };
+    }
+
+    try {
+        const newSiteVisitData = {
+            contactId: result.data.contactId,
+            contactName: contact.name,
+            listingIds: result.data.listingIds,
+            listingLabels,
+            visitAt: result.data.visitAt,
+            notes: result.data.notes || '',
+            createdByName: user.name,
+            createdByEmail: user.email,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+        };
+
+        const docRef = await addDoc(siteVisitsCollection, newSiteVisitData);
+        let savedContact: Contact | undefined;
+
+        if (shouldUpdatePipeline) {
+            const contactRef = doc(db, 'contacts', contact.id);
+            await updateDoc(contactRef, {
+                leadStage: 'Site Visit',
+                updatedByName: user.name,
+                updatedByEmail: user.email,
+                updatedAt: serverTimestamp(),
+            });
+            const savedContactSnap = await getDoc(contactRef);
+            const savedContactData = savedContactSnap.data();
+            savedContact = savedContactData
+                ? {
+                    id: contact.id,
+                    ...savedContactData,
+                    createdAt: savedContactData.createdAt?.toDate().toISOString() || contact.createdAt,
+                    updatedAt: savedContactData.updatedAt?.toDate().toISOString() || new Date().toISOString(),
+                } as Contact
+                : undefined;
+        }
+
+        clearMatchCache();
+        revalidatePath('/');
+        revalidatePath('/site-visits');
+        revalidatePath('/activity');
+
+        const docSnap = await getDoc(docRef);
+        const savedData = docSnap.data();
+        await logActivity({
+            userEmail: user.email,
+            userName: user.name,
+            action: 'siteVisitLogged',
+            entityType: 'siteVisit',
+            entityId: docRef.id,
+            entityLabel: contact.name,
+            changes: [
+                { field: 'contact', before: '—', after: contact.name },
+                { field: 'listingsShown', before: '—', after: listingLabels.length ? listingLabels.join(', ') : 'No listings selected' },
+                { field: 'visitAt', before: '—', after: result.data.visitAt },
+                ...(result.data.notes ? [{ field: 'notes', before: '—', after: result.data.notes }] : []),
+                ...(shouldUpdatePipeline ? [{
+                    field: 'leadStage',
+                    before: displayActivityValue(previousStage),
+                    after: 'Site Visit',
+                }] : []),
+            ],
+        });
+
+        return {
+            success: true,
+            siteVisit: {
+                id: docRef.id,
+                ...savedData,
+                createdAt: savedData?.createdAt?.toDate().toISOString(),
+                updatedAt: savedData?.updatedAt?.toDate().toISOString(),
+            } as SiteVisit,
+            contact: savedContact,
+        };
+    } catch (error) {
+        console.error('Failed to add site visit', error);
+        return { success: false, error: { _form: ['Failed to log site visit.'] } };
     }
 }
 
