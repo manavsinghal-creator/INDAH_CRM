@@ -31,6 +31,7 @@ const entityLabels: Record<ActivityEntityType, string> = {
   contact: 'Contact',
   listing: 'Listing',
   channelPartner: 'Channel Partner',
+  siteVisit: 'Site Visit',
   session: 'Login Session',
 };
 
@@ -40,6 +41,7 @@ const actionLabels: Record<ActivityAction, string> = {
   deleted: 'Deleted',
   whatsappDraftOpened: 'Opened WhatsApp draft',
   emailDraftOpened: 'Opened email draft',
+  siteVisitLogged: 'Logged site visit',
   signedIn: 'Signed in',
 };
 
@@ -59,6 +61,11 @@ function activityDetails(log: ActivityLog) {
   }
 
   if (log.action === 'signedIn') return 'Successful CRM login';
+
+  if (log.action === 'siteVisitLogged') {
+    const listings = log.changes.find((change) => change.field === 'listingsShown')?.after;
+    return listings ? `Listings: ${listings}` : 'Site visit logged';
+  }
 
   if (log.action === 'updated' && log.changes.length > 0) {
     return `Changed ${log.changes.map((change) => humanizeField(change.field)).join(', ')}`;
@@ -179,6 +186,7 @@ export function ActivityLogList({ initialLogs }: { initialLogs: ActivityLog[] })
           <option value="deleted">Deleted</option>
           <option value="whatsappDraftOpened">WhatsApp drafts</option>
           <option value="emailDraftOpened">Email drafts</option>
+          <option value="siteVisitLogged">Site visits</option>
           <option value="signedIn">Sign-ins</option>
         </select>
         <select
@@ -191,6 +199,7 @@ export function ActivityLogList({ initialLogs }: { initialLogs: ActivityLog[] })
           <option value="contact">Contacts</option>
           <option value="listing">Listings</option>
           <option value="channelPartner">Channel Partners</option>
+          <option value="siteVisit">Site Visits</option>
           <option value="session">Login Sessions</option>
         </select>
         <div className="flex gap-2 md:hidden">

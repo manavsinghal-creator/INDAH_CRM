@@ -33,8 +33,10 @@ import {
   Eye,
   Upload,
   Sparkles,
+  GripVertical,
+  CalendarClock,
 } from 'lucide-react';
-import { deleteContact } from '@/app/actions';
+import { deleteContact, updateContactLeadStage } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import {
   AlertDialog,
@@ -60,10 +62,13 @@ import { LeadStageBadge } from './lead-stage-badge';
 import { PropertyMatchDialog } from './property-match-dialog';
 import { RefreshButton } from './refresh-button';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { SiteVisitFormDialog } from './site-visit-form-dialog';
 
 type SortKey = keyof Pick<Contact, 'serialNumber' | 'name' | 'leadStage' | 'budget' | 'city' | 'locationPreference' | 'createdAt' | 'updatedAt' | 'propertyPreference' | 'contactType' | 'isActive'>;
 type ContactDashboardTab = 'Buyer' | 'Seller';
-type ContactListActions = 'view' | 'match' | 'whatsapp' | 'email' | 'edit' | 'delete';
+type ContactListActions = 'view' | 'match' | 'visit' | 'whatsapp' | 'email' | 'edit' | 'delete';
+type BuyerViewMode = 'table' | 'pipeline';
 
 const CONTACT_NAME_LIMIT = 16;
 
@@ -98,16 +103,22 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
   const [searchQuery, setSearchQuery] = React.useState('');
   const [stageFilter, setStageFilter] = React.useState<'All' | LeadStage>('All');
   const [activeTab, setActiveTab] = React.useState<ContactDashboardTab>('Buyer');
+  const [buyerViewMode, setBuyerViewMode] = React.useState<BuyerViewMode>('table');
   const [isFormOpen, setFormOpen] = React.useState(false);
   const [isViewOpen, setViewOpen] = React.useState(false);
   const [isBulkUploadOpen, setBulkUploadOpen] = React.useState(false);
   const [isWhatsAppOpen, setWhatsAppOpen] = React.useState(false);
   const [isPropertyMatchOpen, setPropertyMatchOpen] = React.useState(false);
+  const [isSiteVisitOpen, setSiteVisitOpen] = React.useState(false);
   const [activeContact, setActiveContact] = React.useState<Contact | null>(null);
   const [matchingContact, setMatchingContact] = React.useState<Contact | null>(null);
+  const [siteVisitContact, setSiteVisitContact] = React.useState<Contact | null>(null);
   const [editingContact, setEditingContact] = React.useState<Contact | null>(null);
   const [viewingContact, setViewingContact] = React.useState<Contact | null>(null);
   const [isPending, startTransition] = React.useTransition();
+  const [updatingStageIds, setUpdatingStageIds] = React.useState<Set<string>>(new Set());
+  const [draggingContactId, setDraggingContactId] = React.useState<string | null>(null);
+  const [dragOverStage, setDragOverStage] = React.useState<LeadStage | null>(null);
   const [isClient, setIsClient] = React.useState(false);
   const router = useRouter();
 
@@ -138,6 +149,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
     const nextTab = value as ContactDashboardTab;
     setActiveTab(nextTab);
     setStageFilter('All');
+    if (nextTab === 'Seller') setBuyerViewMode('table');
   };
 
   const handleSort = (key: SortKey) => {
@@ -167,6 +179,11 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
   const handlePropertyMatch = (contact: Contact) => {
     setMatchingContact(contact);
     setPropertyMatchOpen(true);
+  };
+
+  const handleSiteVisit = (contact: Contact) => {
+    setSiteVisitContact(contact);
+    setSiteVisitOpen(true);
   };
   
   const handleAddNew = () => {
@@ -198,7 +215,50 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
     setViewingContact((current) => current?.id === savedContact.id ? savedContact : current);
     setActiveContact((current) => current?.id === savedContact.id ? savedContact : current);
     setMatchingContact((current) => current?.id === savedContact.id ? savedContact : current);
+    setSiteVisitContact((current) => current?.id === savedContact.id ? savedContact : current);
   };
+
+  const updateContactInState = React.useCallback((updatedContact: Contact) => {
+    setContacts((current) => current.map((contact) => contact.id === updatedContact.id ? updatedContact : contact));
+    setEditingContact((current) => current?.id === updatedContact.id ? updatedContact : current);
+    setViewingContact((current) => current?.id === updatedContact.id ? updatedContact : current);
+    setActiveContact((current) => current?.id === updatedContact.id ? updatedContact : current);
+    setMatchingContact((current) => current?.id === updatedContact.id ? updatedContact : current);
+    setSiteVisitContact((current) => current?.id === updatedContact.id ? updatedContact : current);
+  }, []);
+
+  const handleLeadStageChange = React.useCallback(async (contact: Contact, nextStage: LeadStage) => {
+    const previousStage = getContactLeadStage(contact);
+    if (previousStage === nextStage || updatingStageIds.has(contact.id)) return;
+
+    const optimisticContact = { ...contact, leadStage: nextStage, updatedAt: new Date().toISOString() };
+    updateContactInState(optimisticContact);
+    setUpdatingStageIds((current) => new Set(current).add(contact.id));
+
+    const result = await updateContactLeadStage(contact.id, nextStage);
+    setUpdatingStageIds((current) => {
+      const next = new Set(current);
+      next.delete(contact.id);
+      return next;
+    });
+
+    if (result.success && result.contact) {
+      updateContactInState(result.contact);
+      toast({
+        title: 'Pipeline updated',
+        description: `${contact.name} moved to ${nextStage}.`,
+      });
+      router.refresh();
+      return;
+    }
+
+    updateContactInState({ ...contact, leadStage: previousStage });
+    toast({
+      title: 'Pipeline update failed',
+      description: result.error || 'Please try again.',
+      variant: 'destructive',
+    });
+  }, [router, toast, updateContactInState, updatingStageIds]);
 
   const sortedContacts = React.useMemo(() => {
     return [...contacts].filter(contact => {
@@ -243,6 +303,31 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
     });
   }, [activeTab, contacts, sortKey, sortOrder, searchQuery, stageFilter]);
 
+  const searchedBuyerContacts = React.useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return contacts.filter((contact) => {
+      if (contact.contactType === 'Seller') return false;
+      return (
+        includesSearch(contact.name, query) ||
+        includesSearch(contact.email, query) ||
+        includesSearch(contact.phone, query) ||
+        includesSearch(getContactLeadStage(contact), query) ||
+        includesSearch(contact.locationPreference, query) ||
+        includesSearch(contact.city, query) ||
+        includesSearch(contact.requirementPurpose, query)
+      );
+    });
+  }, [contacts, searchQuery]);
+
+  const pipelineContactsByStage = React.useMemo(() => {
+    const grouped = leadStageOptions.reduce((acc, stage) => {
+      acc[stage] = [];
+      return acc;
+    }, {} as Record<LeadStage, Contact[]>);
+    searchedBuyerContacts.forEach((contact) => grouped[getContactLeadStage(contact)].push(contact));
+    return grouped;
+  }, [searchedBuyerContacts]);
+
   const pipelineCounts = React.useMemo(() => {
     const counts = Object.fromEntries(leadStageOptions.map((stage) => [stage, 0])) as Record<LeadStage, number>;
     contacts.forEach((contact) => {
@@ -256,6 +341,140 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
     return sortOrder === 'asc' ? <ArrowUp className="ml-2 h-4 w-4" /> : <ArrowDown className="ml-2 h-4 w-4" />;
   };
 
+  const renderPipelineSelect = (contact: Contact, triggerClassName?: string) => (
+    <Select
+      value={getContactLeadStage(contact)}
+      onValueChange={(value) => handleLeadStageChange(contact, value as LeadStage)}
+      disabled={updatingStageIds.has(contact.id)}
+    >
+      <SelectTrigger
+        className={cn('h-8 min-w-[138px] bg-background text-xs', triggerClassName)}
+        aria-label={`Change pipeline stage for ${contact.name}`}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {leadStageOptions.map((stage) => (
+          <SelectItem key={stage} value={stage}>{stage}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+
+  const handlePipelineDrop = (stage: LeadStage, event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const contactId = event.dataTransfer.getData('text/contact-id') || draggingContactId;
+    const contact = contacts.find((item) => item.id === contactId);
+    setDraggingContactId(null);
+    setDragOverStage(null);
+    if (contact) void handleLeadStageChange(contact, stage);
+  };
+
+  const renderPipelineCard = (contact: Contact) => (
+    <article
+      key={contact.id}
+      draggable={!updatingStageIds.has(contact.id)}
+      onDragStart={(event) => {
+        event.dataTransfer.setData('text/contact-id', contact.id);
+        event.dataTransfer.effectAllowed = 'move';
+        setDraggingContactId(contact.id);
+      }}
+      onDragEnd={() => {
+        setDraggingContactId(null);
+        setDragOverStage(null);
+      }}
+      className={cn(
+        'rounded-md border bg-card p-3 shadow-sm transition hover:border-primary/40',
+        draggingContactId === contact.id && 'opacity-50',
+        updatingStageIds.has(contact.id) && 'pointer-events-none opacity-60'
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <button
+            type="button"
+            onClick={() => handleView(contact)}
+            className="block max-w-full truncate text-left text-sm font-semibold hover:text-primary"
+            title={contact.name}
+          >
+            {truncateText(contact.name, 22)}
+          </button>
+          <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">{contact.serialNumber}</p>
+        </div>
+        <GripVertical className="mt-0.5 hidden h-4 w-4 shrink-0 text-muted-foreground md:block" aria-hidden="true" />
+      </div>
+
+      <div className="mt-3 space-y-2 text-xs">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-muted-foreground">Budget</span>
+          <span className="font-medium">{contact.budget} Cr</span>
+        </div>
+        <div>
+          <p className="text-muted-foreground">Location</p>
+          <p className="mt-0.5 line-clamp-2">{contact.locationPreference || contact.city || '—'}</p>
+        </div>
+        <div>
+          <p className="text-muted-foreground">Property type</p>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {contact.propertyPreference?.length
+              ? contact.propertyPreference.slice(0, 2).map((pref) => <Badge key={pref} variant="secondary" className="text-[10px]">{pref}</Badge>)
+              : <span>—</span>}
+            {(contact.propertyPreference?.length || 0) > 2 && <Badge variant="outline" className="text-[10px]">+{(contact.propertyPreference?.length || 0) - 2}</Badge>}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3">
+        {renderPipelineSelect(contact, 'w-full')}
+      </div>
+      <div className="mt-3 flex items-center justify-between border-t pt-2">
+        {renderContactActions(contact, ['view', 'match', 'visit', 'whatsapp'])}
+      </div>
+    </article>
+  );
+
+  const renderPipelineBoard = () => (
+    <section className="rounded-xl border bg-muted/20 p-3 shadow-sm" aria-label="Buyer pipeline board">
+      <div className="flex gap-3 overflow-x-auto pb-2">
+        {leadStageOptions.map((stage) => {
+          const stageContacts = pipelineContactsByStage[stage];
+          return (
+            <div
+              key={stage}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                if (dragOverStage !== stage) setDragOverStage(stage);
+              }}
+              onDragLeave={() => setDragOverStage((current) => current === stage ? null : current)}
+              onDrop={(event) => handlePipelineDrop(stage, event)}
+              className={cn(
+                'flex max-h-[calc(100vh-19rem)] min-h-[360px] w-[278px] shrink-0 flex-col rounded-lg border bg-background transition-colors',
+                dragOverStage === stage && 'border-primary bg-primary/5'
+              )}
+            >
+              <div className="sticky top-0 z-[1] flex items-center justify-between gap-3 border-b bg-background/95 p-4 backdrop-blur">
+                <LeadStageBadge stage={stage} className="px-3 py-1.5 text-sm" />
+                <Badge variant="secondary" className="h-7 min-w-7 justify-center rounded-md px-2 text-sm font-semibold">
+                  {stageContacts.length}
+                </Badge>
+              </div>
+              <div className="space-y-2 overflow-y-auto p-2">
+                {stageContacts.length
+                  ? stageContacts.map(renderPipelineCard)
+                  : (
+                    <div className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
+                      Drop contacts here
+                    </div>
+                  )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+
   const renderContactActions = (contact: Contact, visibleActions: ContactListActions[] = ['view', 'match', 'whatsapp']) => (
     <div className="flex items-center justify-start gap-1">
       {visibleActions.includes('view') && (
@@ -266,6 +485,11 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
       {visibleActions.includes('match') && contact.contactType === 'Buyer' && (
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handlePropertyMatch(contact)} aria-label={`Find matching properties for ${contact.name}`} title="Find matching properties">
           <Sparkles className="h-4 w-4 text-primary" />
+        </Button>
+      )}
+      {visibleActions.includes('visit') && contact.contactType === 'Buyer' && (
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleSiteVisit(contact)} aria-label={`Log site visit for ${contact.name}`} title="Log site visit">
+          <CalendarClock className="h-4 w-4 text-amber-600" />
         </Button>
       )}
       {visibleActions.includes('whatsapp') && (
@@ -339,6 +563,18 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
       </Tabs>
 
       {activeTab === 'Buyer' && (
+        <Tabs value={buyerViewMode} onValueChange={(value) => {
+          setBuyerViewMode(value as BuyerViewMode);
+          setStageFilter('All');
+        }}>
+          <TabsList className="grid w-full grid-cols-2 md:w-[280px]">
+            <TabsTrigger value="table">Table</TabsTrigger>
+            <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
+
+      {activeTab === 'Buyer' && buyerViewMode === 'table' && (
       <section aria-label="Buyer lead pipeline" className="border-y bg-muted/20 py-3">
         <div className="flex gap-2 overflow-x-auto px-1 pb-1">
           <Button
@@ -366,6 +602,10 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
       </section>
       )}
 
+      {activeTab === 'Buyer' && buyerViewMode === 'pipeline' ? (
+        renderPipelineBoard()
+      ) : (
+      <>
       <div className="space-y-3 md:hidden">
         {isClient && sortedContacts.map((contact) => (
           <article key={contact.id} className={cn(
@@ -411,9 +651,15 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                     : <span>—</span>}
                 </div>
               </div>
+              {contact.contactType === 'Buyer' && (
+                <div className="col-span-2">
+                  <p className="text-xs text-muted-foreground">Pipeline</p>
+                  <div className="mt-1">{renderPipelineSelect(contact, 'w-full')}</div>
+                </div>
+              )}
             </div>
             <div className="mt-4 flex items-center gap-1 border-t pt-3">
-              {renderContactActions(contact, contact.contactType === 'Buyer' ? ['view', 'match', 'whatsapp'] : ['view', 'whatsapp'])}
+              {renderContactActions(contact, contact.contactType === 'Buyer' ? ['view', 'match', 'visit', 'whatsapp'] : ['view', 'whatsapp'])}
             </div>
           </article>
         ))}
@@ -453,7 +699,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                     <TableCell className="w-[104px] min-w-[104px] font-mono text-muted-foreground">{contact.serialNumber}</TableCell>
                     {activeTab === 'Buyer' && (
                       <>
-                        <TableCell><LeadStageBadge stage={getContactLeadStage(contact)} /></TableCell>
+                        <TableCell>{renderPipelineSelect(contact)}</TableCell>
                         <TableCell>{contact.budget}</TableCell>
                       </>
                     )}
@@ -466,7 +712,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                     </TableCell>
                     {activeTab === 'Seller' && <TableCell>{contact.offeredListings?.length || 0}</TableCell>}
                     <TableCell className="w-[176px] min-w-[176px]">
-                      {renderContactActions(contact, activeTab === 'Buyer' ? ['view', 'match', 'whatsapp'] : ['view', 'whatsapp'])}
+                      {renderContactActions(contact, activeTab === 'Buyer' ? ['view', 'match', 'visit', 'whatsapp'] : ['view', 'whatsapp'])}
                     </TableCell>
                 </TableRow>
                 ))}
@@ -500,11 +746,25 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
           </Table>
         </div>
       </div>
+      </>
+      )}
       
       <ContactForm isOpen={isFormOpen} onOpenChange={setFormOpen} contact={editingContact} allContacts={contacts} allListings={allListings} onSaved={handleSaved} initialValues={newContactInitialValues} />
       {viewingContact && <ContactViewDialog isOpen={isViewOpen} onOpenChange={setViewOpen} contact={viewingContact} allListings={allListings} />}
       {activeContact && <ContactWhatsAppDialog isOpen={isWhatsAppOpen} onOpenChange={setWhatsAppOpen} contact={activeContact} listings={allListings} />}
       {matchingContact && <PropertyMatchDialog isOpen={isPropertyMatchOpen} onOpenChange={setPropertyMatchOpen} contact={matchingContact} allListings={allListings} />}
+      {siteVisitContact && (
+        <SiteVisitFormDialog
+          isOpen={isSiteVisitOpen}
+          onOpenChange={setSiteVisitOpen}
+          contacts={contacts}
+          listings={allListings}
+          initialContactId={siteVisitContact.id}
+          onSaved={(_, updatedContact) => {
+            if (updatedContact) updateContactInState(updatedContact);
+          }}
+        />
+      )}
       <BulkContactUploadDialog isOpen={isBulkUploadOpen} onOpenChange={setBulkUploadOpen} />
     </div>
   );

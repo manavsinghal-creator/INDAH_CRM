@@ -5,6 +5,8 @@ import type {
   ContactFormData,
   Listing,
   ListingFormData,
+  SiteVisit,
+  SiteVisitFormData,
 } from '@/lib/types';
 
 const now = new Date().toISOString();
@@ -242,6 +244,24 @@ export const demoListings: Listing[] = [
   },
 ];
 
+export const demoSiteVisits: SiteVisit[] = [
+  {
+    id: 'demo-site-visit-1',
+    contactId: 'demo-contact-1',
+    contactName: 'Aarav Mehta',
+    listingIds: ['demo-listing-1'],
+    listingLabels: ['L201 - Assagao Courtyard Villa'],
+    visitAt: now,
+    outcome: 'Interested',
+    notes: 'Liked the villa layout and asked for rental projection.',
+    followUpDate: '',
+    createdByName: 'Admin',
+    createdByEmail: 'manavsinghal@gmail.com',
+    createdAt: now,
+    updatedAt: now,
+  },
+];
+
 export const demoChannelPartners: ChannelPartner[] = [
   {
     id: 'demo-partner-1',
@@ -342,6 +362,23 @@ export function deleteDemoContact(id: string) {
   if (index === -1) return false;
   demoContacts.splice(index, 1);
   return true;
+}
+
+export function addDemoSiteVisit(data: SiteVisitFormData, contactName: string, listingLabels: string[]): SiteVisit {
+  const timestamp = new Date().toISOString();
+  const siteVisit: SiteVisit = {
+    id: `demo-site-visit-${Date.now()}`,
+    contactName,
+    listingLabels,
+    ...data,
+    createdByName: 'Admin',
+    createdByEmail: 'manavsinghal@gmail.com',
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  demoSiteVisits.unshift(siteVisit);
+  return siteVisit;
 }
 
 export function addDemoListing(data: ListingFormData): Listing {
