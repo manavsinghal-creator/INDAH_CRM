@@ -1,15 +1,16 @@
 import type { WhatsAppListing } from '@/lib/whatsapp';
-import { formatListingPrice } from '@/lib/whatsapp';
+import { formatListingPricePlain } from '@/lib/listing-display';
 
 function listingBlock(listing: WhatsAppListing) {
   const link = listing.externalPublicLink || listing.listingUrl;
+  const title = listing.titleProjectName || listing.listingName;
   return [
-    `${listing.listingName}${listing.listingId ? ` (${listing.listingId})` : ''}`,
-    listing.matchReason ? `Why it matches: ${listing.matchReason}` : null,
-    `Price: ${formatListingPrice(listing.basePrice)}`,
+    `${title}${listing.listingId ? ` (${listing.listingId})` : ''}`,
+    `${listing.bhkConfiguration} ${listing.propertyType} in ${listing.location}`,
+    `Price: ${formatListingPricePlain(listing)}`,
+    listing.matchReason ? `Highlights: ${listing.matchReason.replace(/^why it matches:\s*/i, '').replace(/\.$/, '')}` : null,
     `Location: ${listing.location}`,
-    `Configuration: ${listing.bhkConfiguration} ${listing.propertyType}`,
-    link ? `View listing: ${link}` : null,
+    link ? `Open full listing details: ${link}` : null,
   ].filter(Boolean).join('\n');
 }
 

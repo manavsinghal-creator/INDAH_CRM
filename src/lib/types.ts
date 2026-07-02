@@ -1,6 +1,16 @@
 
 import { z } from "zod";
 
+const optionalEmailSchema = (message = "Invalid email address.") =>
+  z.preprocess(
+    (value) => {
+      if (typeof value !== "string") return value;
+      const trimmed = value.trim();
+      return trimmed.length ? trimmed : "";
+    },
+    z.string().email(message).optional().or(z.literal(""))
+  );
+
 export const budgetOptions = [
   "<1",
   "1-3",
@@ -29,6 +39,7 @@ export const leadStageOptions = [
   "Property Shared",
   "Site Visit",
   "Negotiating",
+  "Disqualified",
   "Closed/Lost",
 ] as const;
 export type LeadStage = typeof leadStageOptions[number];
@@ -38,7 +49,7 @@ export const ContactSchema = z.object({
   id: z.string(),
   serialNumber: z.string(),
   name: z.string().min(2, "Name must be at least 2 characters."),
-  email: z.string().email("Invalid email address.").optional().or(z.literal('')),
+  email: optionalEmailSchema("Invalid email address."),
   phone: z.string().min(10, "Phone number must be at least 10 digits."),
   budget: z.preprocess(
     (value) => value === ">10" ? "10-20" : value,
@@ -52,6 +63,8 @@ export const ContactSchema = z.object({
   requirementPurpose: z.array(z.enum(requirementPurposeOptions)).optional().default([]),
   propertyPreference: z.array(z.string()).optional(),
   offeredListings: z.array(z.string()).optional(),
+  closedLostReason: z.string().optional(),
+  disqualifiedReason: z.string().optional(),
   notes: z.string().optional(),
   referenceContact: z.string().optional(),
   isActive: z.boolean().optional().default(true),
@@ -74,6 +87,21 @@ export const ContactFormSchema = ContactSchema.omit({
   updatedByEmail: true,
   createdAt: true,
   updatedAt: true,
+}).superRefine((data, ctx) => {
+  if (data.leadStage === "Closed/Lost" && !data.closedLostReason?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["closedLostReason"],
+      message: "Closed/Lost reason is required.",
+    });
+  }
+  if (data.leadStage === "Disqualified" && !data.disqualifiedReason?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["disqualifiedReason"],
+      message: "Disqualified reason is required.",
+    });
+  }
 });
 export type ContactFormData = z.infer<typeof ContactFormSchema>;
 
@@ -86,6 +114,8 @@ export const highlightOptions = ["Top Choice", "Amazing View", "Super Luxury", "
 export const furnishingOptions = ["Unfurnished", "Semi Furnished", "Fully Furnished"] as const;
 export const listingAvailabilityOptions = ["Available", "On Hold", "Sold", "Temporarily Unavailable"] as const;
 export type ListingAvailability = typeof listingAvailabilityOptions[number];
+export const listingTypeOptions = ["Public", "Private"] as const;
+export type ListingType = typeof listingTypeOptions[number];
 
 export const uspTagOptions = [
   "mediterranean",
@@ -133,10 +163,11 @@ export const ListingSchema = z.object({
   listingId: z.string().optional(),
   listingName: z.string().min(1, "Listing Name is required."),
   projectName: z.string().min(1, "Project Name is required."),
+  titleProjectName: z.string().optional(),
   developerName: z.string().optional(),
   contactPerson: z.string().optional(),
   phone: z.string().optional(),
-  email: z.string().email().optional().or(z.literal('')),
+  email: optionalEmailSchema(),
   propertyAddress: z.string().optional(),
   location: z.string().min(1, "Location is required."),
   description: z.string().optional(),
@@ -156,6 +187,7 @@ export const ListingSchema = z.object({
   unitFloor: z.string().optional(),
   totalUnits: z.coerce.number().optional(),
   availableUnits: z.coerce.number().optional(),
+  priceOnRequest: z.boolean().optional().default(false),
   basePrice: z.coerce.number().min(0, "Price must be a positive number."),
   pricePerSqFt: z.coerce.number().optional(),
   taxesApplicable: z.array(z.string()).optional(),
@@ -181,6 +213,7 @@ export const ListingSchema = z.object({
   notes: z.string().optional(),
   additionalActions: z.array(z.string()).optional(),
   availabilityStatus: z.enum(listingAvailabilityOptions).optional().default("Available"),
+  listingType: z.enum(listingTypeOptions).optional().default("Public"),
   isActive: z.boolean().optional().default(true),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -328,10 +361,12 @@ export const QuickPropertyMatcherOutputSchema = z.object({
       recordId: z.string(),
       listingId: z.string(),
       listingName: z.string(),
+      titleProjectName: z.string().optional(),
       location: z.string(),
       bhkConfiguration: z.string(),
       propertyType: z.string(),
       basePrice: z.number(),
+      priceOnRequest: z.boolean().optional(),
       listingUrl: z.string().optional(),
       externalPublicLink: z.string().optional(),
       matchScore: z.number().optional(),

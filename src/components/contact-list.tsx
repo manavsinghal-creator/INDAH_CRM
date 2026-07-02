@@ -29,6 +29,7 @@ import {
   ArrowUp,
   ArrowDown,
   MessageSquareText,
+  RefreshCw,
   Search,
   Eye,
   Upload,
@@ -64,10 +65,11 @@ import { RefreshButton } from './refresh-button';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { SiteVisitFormDialog } from './site-visit-form-dialog';
+import { ContactReconnectionDialog } from './contact-reconnection-dialog';
 
-type SortKey = keyof Pick<Contact, 'serialNumber' | 'name' | 'leadStage' | 'budget' | 'city' | 'locationPreference' | 'createdAt' | 'updatedAt' | 'propertyPreference' | 'contactType' | 'isActive'>;
+type SortKey = keyof Pick<Contact, 'serialNumber' | 'name' | 'leadStage' | 'budget' | 'city' | 'locationPreference' | 'referenceContact' | 'createdAt' | 'updatedAt' | 'propertyPreference' | 'contactType' | 'isActive'>;
 type ContactDashboardTab = 'Buyer' | 'Seller';
-type ContactListActions = 'view' | 'match' | 'visit' | 'whatsapp' | 'email' | 'edit' | 'delete';
+type ContactListActions = 'view' | 'match' | 'visit' | 'whatsapp' | 'email' | 'reconnect' | 'edit' | 'delete';
 type BuyerViewMode = 'table' | 'pipeline';
 
 const CONTACT_NAME_LIMIT = 16;
@@ -108,6 +110,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
   const [isViewOpen, setViewOpen] = React.useState(false);
   const [isBulkUploadOpen, setBulkUploadOpen] = React.useState(false);
   const [isWhatsAppOpen, setWhatsAppOpen] = React.useState(false);
+  const [isReconnectOpen, setReconnectOpen] = React.useState(false);
   const [isPropertyMatchOpen, setPropertyMatchOpen] = React.useState(false);
   const [isSiteVisitOpen, setSiteVisitOpen] = React.useState(false);
   const [activeContact, setActiveContact] = React.useState<Contact | null>(null);
@@ -176,6 +179,11 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
     setWhatsAppOpen(true);
   };
 
+  const handleReconnect = (contact: Contact) => {
+    setActiveContact(contact);
+    setReconnectOpen(true);
+  };
+
   const handlePropertyMatch = (contact: Contact) => {
     setMatchingContact(contact);
     setPropertyMatchOpen(true);
@@ -227,15 +235,40 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
     setSiteVisitContact((current) => current?.id === updatedContact.id ? updatedContact : current);
   }, []);
 
+  const requestStageReason = React.useCallback((contact: Contact, nextStage: LeadStage) => {
+    if (nextStage === 'Closed/Lost') {
+      return window.prompt(`Why is ${contact.name} Closed/Lost?`, contact.closedLostReason || '')?.trim() || '';
+    }
+    if (nextStage === 'Disqualified') {
+      return window.prompt(`Why is ${contact.name} Disqualified?`, contact.disqualifiedReason || '')?.trim() || '';
+    }
+    return '';
+  }, []);
+
   const handleLeadStageChange = React.useCallback(async (contact: Contact, nextStage: LeadStage) => {
     const previousStage = getContactLeadStage(contact);
     if (previousStage === nextStage || updatingStageIds.has(contact.id)) return;
+    const reason = requestStageReason(contact, nextStage);
+    if ((nextStage === 'Closed/Lost' || nextStage === 'Disqualified') && !reason) {
+      toast({
+        title: 'Reason required',
+        description: `Please add a reason before moving ${contact.name} to ${nextStage}.`,
+        variant: 'destructive',
+      });
+      return;
+    }
 
-    const optimisticContact = { ...contact, leadStage: nextStage, updatedAt: new Date().toISOString() };
+    const optimisticContact = {
+      ...contact,
+      leadStage: nextStage,
+      closedLostReason: nextStage === 'Closed/Lost' ? reason : contact.closedLostReason,
+      disqualifiedReason: nextStage === 'Disqualified' ? reason : contact.disqualifiedReason,
+      updatedAt: new Date().toISOString()
+    };
     updateContactInState(optimisticContact);
     setUpdatingStageIds((current) => new Set(current).add(contact.id));
 
-    const result = await updateContactLeadStage(contact.id, nextStage);
+    const result = await updateContactLeadStage(contact.id, nextStage, reason);
     setUpdatingStageIds((current) => {
       const next = new Set(current);
       next.delete(contact.id);
@@ -258,7 +291,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
       description: result.error || 'Please try again.',
       variant: 'destructive',
     });
-  }, [router, toast, updateContactInState, updatingStageIds]);
+  }, [requestStageReason, router, toast, updateContactInState, updatingStageIds]);
 
   const sortedContacts = React.useMemo(() => {
     return [...contacts].filter(contact => {
@@ -272,6 +305,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
         includesSearch(contact.phone, query) ||
         includesSearch(getContactLeadStage(contact), query) ||
         includesSearch(contact.locationPreference, query) ||
+        includesSearch(contact.referenceContact, query) ||
         includesSearch(contact.city, query) ||
         includesSearch(contact.requirementPurpose, query)
       );
@@ -313,6 +347,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
         includesSearch(contact.phone, query) ||
         includesSearch(getContactLeadStage(contact), query) ||
         includesSearch(contact.locationPreference, query) ||
+        includesSearch(contact.referenceContact, query) ||
         includesSearch(contact.city, query) ||
         includesSearch(contact.requirementPurpose, query)
       );
@@ -428,7 +463,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
         {renderPipelineSelect(contact, 'w-full')}
       </div>
       <div className="mt-3 flex items-center justify-between border-t pt-2">
-        {renderContactActions(contact, ['view', 'match', 'visit', 'whatsapp'])}
+        {renderContactActions(contact, ['view', 'match', 'visit', 'whatsapp', 'reconnect'])}
       </div>
     </article>
   );
@@ -497,14 +532,20 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
           <MessageSquareText className="h-4 w-4 text-emerald-600"/>
         </Button>
       )}
+      {visibleActions.includes('reconnect') && (
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleReconnect(contact)} aria-label={`Create reconnection WhatsApp draft for ${contact.name}`} title="Reconnection draft">
+          <RefreshCw className="h-4 w-4 text-sky-600"/>
+        </Button>
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`More actions for ${contact.name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {contact.email ? (
             <DropdownMenuItem asChild><a href={`mailto:${contact.email}`}><Mail className="mr-2 h-4 w-4" /> Send Email</a></DropdownMenuItem>
           ) : (
-            <DropdownMenuItem disabled><Mail className="mr-2 h-4 w-4" /> Send Email</DropdownMenuItem>
+          <DropdownMenuItem disabled><Mail className="mr-2 h-4 w-4" /> Send Email</DropdownMenuItem>
           )}
+          <DropdownMenuItem onClick={() => handleReconnect(contact)}><MessageSquareText className="mr-2 h-4 w-4" /> Reconnection Draft</DropdownMenuItem>
           <DropdownMenuItem onClick={() => handleEdit(contact)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
           <AlertDialog>
             <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive focus:bg-destructive/10 focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" />Delete</DropdownMenuItem></AlertDialogTrigger>
@@ -639,6 +680,10 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                 <p className="text-xs text-muted-foreground">City</p>
                 <p>{contact.city || '—'}</p>
               </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Reference</p>
+                <p>{contact.referenceContact || '—'}</p>
+              </div>
               <div className="col-span-2">
                 <p className="text-xs text-muted-foreground">Location preference</p>
                 <p>{contact.locationPreference || '—'}</p>
@@ -659,7 +704,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
               )}
             </div>
             <div className="mt-4 flex items-center gap-1 border-t pt-3">
-              {renderContactActions(contact, contact.contactType === 'Buyer' ? ['view', 'match', 'visit', 'whatsapp'] : ['view', 'whatsapp'])}
+              {renderContactActions(contact, contact.contactType === 'Buyer' ? ['view', 'match', 'visit', 'whatsapp', 'reconnect'] : ['view', 'whatsapp', 'reconnect'])}
             </div>
           </article>
         ))}
@@ -684,10 +729,11 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                   </>
                 )}
                 <TableHead onClick={() => handleSort('city')} className="w-[120px] min-w-[120px] cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">City {getSortIcon('city')}</div></TableHead>
+                <TableHead onClick={() => handleSort('referenceContact')} className="w-[148px] min-w-[148px] cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Reference {getSortIcon('referenceContact')}</div></TableHead>
                 <TableHead onClick={() => handleSort('locationPreference')} className="min-w-[190px] cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">{activeTab === 'Buyer' ? 'Location Preference' : 'Area / Location'} {getSortIcon('locationPreference')}</div></TableHead>
                 <TableHead className="min-w-[176px]"><div className="flex items-center">Property Type</div></TableHead>
                 {activeTab === 'Seller' && <TableHead className="w-[128px] min-w-[128px]">Linked Listings</TableHead>}
-                <TableHead className="w-[176px] min-w-[176px] text-left">Actions</TableHead>
+                <TableHead className="w-[216px] min-w-[216px] text-left">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -704,6 +750,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                       </>
                     )}
                     <TableCell>{contact.city}</TableCell>
+                    <TableCell className="truncate" title={contact.referenceContact || ''}>{contact.referenceContact || '—'}</TableCell>
                     <TableCell>{contact.locationPreference}</TableCell>
                     <TableCell>
                         <div className="flex flex-wrap gap-1">
@@ -711,14 +758,14 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                         </div>
                     </TableCell>
                     {activeTab === 'Seller' && <TableCell>{contact.offeredListings?.length || 0}</TableCell>}
-                    <TableCell className="w-[176px] min-w-[176px]">
-                      {renderContactActions(contact, activeTab === 'Buyer' ? ['view', 'match', 'visit', 'whatsapp'] : ['view', 'whatsapp'])}
+                    <TableCell className="w-[216px] min-w-[216px]">
+                      {renderContactActions(contact, activeTab === 'Buyer' ? ['view', 'match', 'visit', 'whatsapp', 'reconnect'] : ['view', 'whatsapp', 'reconnect'])}
                     </TableCell>
                 </TableRow>
                 ))}
                 {isClient && sortedContacts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={activeTab === 'Buyer' ? 8 : 7} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={activeTab === 'Buyer' ? 9 : 8} className="h-24 text-center text-muted-foreground">
                       No {activeTab.toLowerCase()} contacts found.
                     </TableCell>
                   </TableRow>
@@ -734,6 +781,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
                                 <TableCell><Skeleton className="h-5 w-24"/></TableCell>
                               </>
                             )}
+                            <TableCell><Skeleton className="h-5 w-24"/></TableCell>
                             <TableCell><Skeleton className="h-5 w-24"/></TableCell>
                             <TableCell><Skeleton className="h-5 w-32"/></TableCell>
                             <TableCell><Skeleton className="h-5 w-24"/></TableCell>
@@ -752,6 +800,7 @@ export function ContactList({ initialContacts, allListings }: { initialContacts:
       <ContactForm isOpen={isFormOpen} onOpenChange={setFormOpen} contact={editingContact} allContacts={contacts} allListings={allListings} onSaved={handleSaved} initialValues={newContactInitialValues} />
       {viewingContact && <ContactViewDialog isOpen={isViewOpen} onOpenChange={setViewOpen} contact={viewingContact} allListings={allListings} />}
       {activeContact && <ContactWhatsAppDialog isOpen={isWhatsAppOpen} onOpenChange={setWhatsAppOpen} contact={activeContact} listings={allListings} />}
+      {activeContact && <ContactReconnectionDialog isOpen={isReconnectOpen} onOpenChange={setReconnectOpen} contact={activeContact} />}
       {matchingContact && <PropertyMatchDialog isOpen={isPropertyMatchOpen} onOpenChange={setPropertyMatchOpen} contact={matchingContact} allListings={allListings} />}
       {siteVisitContact && (
         <SiteVisitFormDialog

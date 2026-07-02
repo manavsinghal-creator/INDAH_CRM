@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import type { Contact, Listing, MatchMetadata } from '@/lib/types';
 import type { PropertyMatcherOutput } from '@/ai/flows/property-matcher';
 import { useToast } from '@/hooks/use-toast';
-import { Sparkles, Copy, Check, Mail, MessageCircle } from 'lucide-react';
+import { Sparkles, Copy, Check, Mail, MessageCircle, Eye } from 'lucide-react';
 import { Skeleton } from './ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -25,6 +25,7 @@ import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
 import { EmailDraftDialog } from './email-draft-dialog';
 import { markContactPropertiesShared } from '@/app/actions';
+import { ListingViewDialog } from './listing-view-dialog';
 
 type SuggestedProperty = PropertyMatcherOutput['suggestedProperties'][number];
 
@@ -43,6 +44,7 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [isWhatsAppOpen, setWhatsAppOpen] = React.useState(false);
   const [isEmailOpen, setEmailOpen] = React.useState(false);
+  const [viewingListing, setViewingListing] = React.useState<Listing | null>(null);
   const [updatePipeline, setUpdatePipeline] = React.useState(true);
   const { toast } = useToast();
   const findMatchedListing = (property: SuggestedProperty) => allListings.find((listing) =>
@@ -196,7 +198,9 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
                               </div>
                             </div>
                             <div className="grid grid-cols-1 gap-4">
-                                {suggestedProperties.map((property) => (
+                                {suggestedProperties.map((property) => {
+                                  const matchedListing = findMatchedListing(property);
+                                  return (
                                     <Card key={property.id} className="overflow-hidden border border-slate-100 hover:border-slate-200 transition-colors">
                                         <CardHeader className="bg-slate-50/50 pb-3">
                                             <div className="flex items-center justify-between gap-4">
@@ -223,6 +227,12 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
                                                         {property.matchScore}% Match
                                                     </Badge>
                                                 )}
+                                                {matchedListing && (
+                                                  <Button type="button" size="sm" variant="outline" onClick={() => setViewingListing(matchedListing)}>
+                                                    <Eye className="mr-2 h-4 w-4" />
+                                                    View
+                                                  </Button>
+                                                )}
                                             </div>
                                         </CardHeader>
                                         <CardContent className="pt-3 text-sm space-y-3">
@@ -242,7 +252,8 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
                                             )}
                                         </CardContent>
                                     </Card>
-                                ))}
+                                  );
+                                })}
                             </div>
                         </div>
                     )}
@@ -292,6 +303,16 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
         onOpened={handleShared}
         recipient={{ id: contact.id, name: contact.name, email: contact.email, type: 'contact' }}
         listings={selectedListings}
+      />
+    )}
+    {viewingListing && (
+      <ListingViewDialog
+        isOpen={Boolean(viewingListing)}
+        onOpenChange={(open) => {
+          if (!open) setViewingListing(null);
+        }}
+        listing={viewingListing}
+        onDuplicate={() => {}}
       />
     )}
     </>

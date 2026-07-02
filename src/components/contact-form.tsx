@@ -77,6 +77,8 @@ const defaultFormValues: Partial<ContactFormData> = {
   requirementPurpose: [],
   propertyPreference: [],
   offeredListings: [],
+  closedLostReason: '',
+  disqualifiedReason: '',
   notes: '',
   referenceContact: '',
   isActive: true,
@@ -116,6 +118,8 @@ export function ContactForm({
           requirementPurpose: contact.requirementPurpose || [],
           propertyPreference: contact.propertyPreference || [],
           offeredListings: contact.offeredListings || [],
+          closedLostReason: contact.closedLostReason || '',
+          disqualifiedReason: contact.disqualifiedReason || '',
           notes: contact.notes || '',
           referenceContact: contact.referenceContact || '',
           isActive: contact.isActive ?? true,
@@ -210,7 +214,7 @@ export function ContactForm({
                 <FormItem><FormLabel>Name</FormLabel><FormControl><Input placeholder="e.g. John Doe" {...field} /></FormControl><FormMessage /></FormItem>
               )} />
               <FormField control={form.control} name="email" render={({ field }) => (
-                <FormItem><FormLabel>Email ID</FormLabel><FormControl><Input type="email" placeholder="e.g. john.doe@example.com" {...field} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormLabel>Email ID (Optional)</FormLabel><FormControl><Input type="email" placeholder="e.g. john.doe@example.com" {...field} /></FormControl><FormMessage /></FormItem>
               )} />
               <FormField control={form.control} name="phone" render={({ field }) => (
                 <FormItem><FormLabel>Phone Number</FormLabel><FormControl><Input placeholder="e.g. 9876543210" {...field} /></FormControl><FormMessage /></FormItem>
@@ -239,6 +243,16 @@ export function ContactForm({
                   </Select><FormMessage />
                 </FormItem>
               )} />
+              {form.watch('leadStage') === 'Closed/Lost' && (
+                <FormField control={form.control} name="closedLostReason" render={({ field }) => (
+                  <FormItem><FormLabel>Closed/Lost Reason</FormLabel><FormControl><Input placeholder="e.g. Budget mismatch, bought elsewhere" {...field} /></FormControl><FormMessage /></FormItem>
+                )} />
+              )}
+              {form.watch('leadStage') === 'Disqualified' && (
+                <FormField control={form.control} name="disqualifiedReason" render={({ field }) => (
+                  <FormItem><FormLabel>Disqualified Reason</FormLabel><FormControl><Input placeholder="e.g. Not a real buyer, wrong requirement" {...field} /></FormControl><FormMessage /></FormItem>
+                )} />
+              )}
                <FormField control={form.control} name="locationPreference" render={({ field }) => (
                 <FormItem><FormLabel>Location Preference</FormLabel><FormControl><Input placeholder="e.g. South Delhi, Gurgaon" {...field} /></FormControl><FormMessage /></FormItem>
               )} />

@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import type { Contact, Listing, SiteVisit } from '@/lib/types';
+import { formatListingPrice, getListingDisplayTitle } from '@/lib/listing-display';
 
 function toDateTimeLocal(value = new Date().toISOString()) {
   const date = new Date(value);
@@ -34,7 +35,8 @@ function toIsoFromLocal(value: string) {
 }
 
 function listingLabel(listing: Listing) {
-  return listing.listingId ? `${listing.listingId} - ${listing.listingName}` : listing.listingName;
+  const title = getListingDisplayTitle(listing);
+  return listing.listingId ? `${listing.listingId} - ${title}` : title;
 }
 
 type SiteVisitFormDialogProps = {
@@ -186,7 +188,7 @@ export function SiteVisitFormDialog({
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">{listingLabel(listing)}</span>
                       <span className="block truncate text-xs text-muted-foreground">
-                        {listing.location} · {listing.propertyType} · {listing.basePrice} Cr
+                        {listing.location} · {listing.propertyType} · {formatListingPrice(listing)}
                       </span>
                     </span>
                   </label>
