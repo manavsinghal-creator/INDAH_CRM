@@ -29,6 +29,7 @@ export function hasMatchTextOverlap(left?: string, right?: string) {
 }
 
 function listingBudgetBand(listing: Listing) {
+  if (listing.priceOnRequest) return null;
   if (listing.basePrice < 1) return 0;
   if (listing.basePrice <= 3) return 1;
   if (listing.basePrice <= 6) return 2;
@@ -43,15 +44,21 @@ export function scoreListingForContact(listing: Listing, contact: Contact): Rank
   const keyFitFactors: string[] = [];
   const concernFactors: string[] = [];
 
-  const budgetDistance = Math.abs(budgetBands.indexOf(contact.budget) - listingBudgetBand(listing));
-  if (budgetDistance === 0) {
-    localScore += 45;
-    keyFitFactors.push(`Within ${contact.budget} Cr budget`);
-  } else if (budgetDistance === 1) {
+  const listingBudget = listingBudgetBand(listing);
+  if (listingBudget === null) {
     localScore += 12;
-    concernFactors.push(`May sit outside the ${contact.budget} Cr budget`);
+    keyFitFactors.push('Price available on request');
   } else {
-    concernFactors.push(`Outside the ${contact.budget} Cr budget`);
+    const budgetDistance = Math.abs(budgetBands.indexOf(contact.budget) - listingBudget);
+    if (budgetDistance === 0) {
+      localScore += 45;
+      keyFitFactors.push(`Within ${contact.budget} Cr budget`);
+    } else if (budgetDistance === 1) {
+      localScore += 12;
+      concernFactors.push(`May sit outside the ${contact.budget} Cr budget`);
+    } else {
+      concernFactors.push(`Outside the ${contact.budget} Cr budget`);
+    }
   }
 
   if (!contact.locationPreference) {
@@ -108,15 +115,21 @@ export function scoreListingForCriteria(
   if (criteria.budget) {
     possibleScore += 50;
     const budgetIndex = budgetBands.indexOf(criteria.budget as typeof budgetBands[number]);
-    const budgetDistance = Math.abs(budgetIndex - listingBudgetBand(listing));
-    if (budgetDistance === 0) {
-      earnedScore += 50;
-      keyFitFactors.push(`Within ${criteria.budget} Cr budget`);
-    } else if (budgetDistance === 1) {
-      earnedScore += 15;
-      concernFactors.push(`May sit outside the ${criteria.budget} Cr budget`);
+    const listingBudget = listingBudgetBand(listing);
+    if (listingBudget === null) {
+      earnedScore += 12;
+      keyFitFactors.push('Price available on request');
     } else {
-      concernFactors.push(`Outside the ${criteria.budget} Cr budget`);
+      const budgetDistance = Math.abs(budgetIndex - listingBudget);
+      if (budgetDistance === 0) {
+        earnedScore += 50;
+        keyFitFactors.push(`Within ${criteria.budget} Cr budget`);
+      } else if (budgetDistance === 1) {
+        earnedScore += 15;
+        concernFactors.push(`May sit outside the ${criteria.budget} Cr budget`);
+      } else {
+        concernFactors.push(`Outside the ${criteria.budget} Cr budget`);
+      }
     }
   }
 
@@ -149,7 +162,10 @@ export function compactListingForMatch({ listing, localScore, keyFitFactors, con
     id: listing.id,
     listingId: listing.listingId,
     listingName: listing.listingName,
+    titleProjectName: listing.titleProjectName,
     projectName: listing.projectName,
+    listingType: listing.listingType || 'Public',
+    priceOnRequest: listing.priceOnRequest || false,
     basePrice: listing.basePrice,
     location: listing.location,
     propertyType: listing.propertyType,

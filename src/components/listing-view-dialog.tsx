@@ -21,6 +21,7 @@ import { Check, Copy, Minus, Sparkles, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { ContactMatchDialog } from './contact-match-dialog';
 import { getListingAvailability, isListingAvailable } from '@/lib/crm-status';
+import { formatListingPrice, getListingDisplayTitle } from '@/lib/listing-display';
 
 interface ListingViewDialogProps {
   isOpen: boolean;
@@ -85,7 +86,7 @@ export function ListingViewDialog({ isOpen, onOpenChange, listing, onDuplicate }
         <DialogHeader>
           <div className="flex items-center justify-between">
             <div>
-              <DialogTitle>{listing.listingName || 'N/A'}</DialogTitle>
+              <DialogTitle>{getListingDisplayTitle(listing) || 'N/A'}</DialogTitle>
               <DialogDescription>
                 Viewing full details for Listing ID: {listing.listingId || 'Not assigned'} (Project: {listing.projectName})
               </DialogDescription>
@@ -108,6 +109,7 @@ export function ListingViewDialog({ isOpen, onOpenChange, listing, onDuplicate }
                 <CardHeader><CardTitle>Basic Information</CardTitle></CardHeader>
                 <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                     <DetailItem label="Listing Name" value={listing.listingName} />
+                    <DetailItem label="Title Project Name" value={listing.titleProjectName} />
                     <DetailItem label="Project Name" value={listing.projectName} />
                     <DetailItem label="Builder/Developer" value={listing.developerName} />
                     <DetailItem label="Contact Person" value={listing.contactPerson} />
@@ -123,6 +125,7 @@ export function ListingViewDialog({ isOpen, onOpenChange, listing, onDuplicate }
                 <CardHeader><CardTitle>Property Details</CardTitle></CardHeader>
                 <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                     <DetailItem label="Property Type" value={listing.propertyType === 'Other' ? listing.propertyTypeOther : listing.propertyType} />
+                    <DetailItem label="Listing Type" value={listing.listingType || 'Public'} />
                     <DetailItem label="Project Status" value={listing.projectStatus} />
                     <DetailItem label="Availability">
                         <Badge variant={isListingAvailable(listing) ? 'default' : 'outline'}>{getListingAvailability(listing)}</Badge>
@@ -156,8 +159,8 @@ export function ListingViewDialog({ isOpen, onOpenChange, listing, onDuplicate }
                 <CardHeader><CardTitle>Pricing & Payment</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                       <DetailItem label="Base Price" value={listing.basePrice ? `${listing.basePrice.toLocaleString('en-IN')} Crores` : null} />
-                       <DetailItem label="Price per sq.ft" value={listing.pricePerSqFt ? `₹${listing.pricePerSqFt.toLocaleString('en-IN')}` : null} />
+                       <DetailItem label="Base Price" value={formatListingPrice(listing)} />
+                       <DetailItem label="Price per sq.ft" value={listing.priceOnRequest ? '-' : listing.pricePerSqFt ? `₹${listing.pricePerSqFt.toLocaleString('en-IN')}` : null} />
                     </div>
                     <ListDetail label="Taxes Applicable" items={listing.taxesApplicable} />
                     <DetailItem label="Payment Schedule" value={listing.paymentSchedule} className="grid-cols-1 md:grid-cols-[1fr_2fr]" />

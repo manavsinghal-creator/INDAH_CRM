@@ -47,6 +47,7 @@ import {
   GenerateDescriptionInputSchema,
   uspTagOptions,
   listingAvailabilityOptions,
+  listingTypeOptions,
 } from '@/lib/types';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
@@ -67,6 +68,7 @@ const defaultValues: ListingFormData = {
     listingId: '',
     listingName: '',
     projectName: '',
+    titleProjectName: '',
     developerName: '',
     contactPerson: '',
     phone: '',
@@ -90,6 +92,7 @@ const defaultValues: ListingFormData = {
     unitFloor: '',
     totalUnits: 0,
     availableUnits: 0,
+    priceOnRequest: false,
     basePrice: 0,
     pricePerSqFt: 0,
     taxesApplicable: [],
@@ -115,6 +118,7 @@ const defaultValues: ListingFormData = {
     notes: '',
     additionalActions: [],
     availabilityStatus: 'Available',
+    listingType: 'Public',
     isActive: true,
 };
 
@@ -140,8 +144,13 @@ export function ListingForm({
   
   const basePrice = form.watch('basePrice');
   const builtUpArea = form.watch('builtUpArea');
+  const priceOnRequest = form.watch('priceOnRequest');
 
   React.useEffect(() => {
+    if (priceOnRequest) {
+      form.setValue('pricePerSqFt', 0);
+      return;
+    }
     if (basePrice && builtUpArea && basePrice > 0 && builtUpArea > 0) {
       const priceInRupees = basePrice * 10000000;
       const pricePerSqFt = Math.round(priceInRupees / builtUpArea);
@@ -153,7 +162,7 @@ export function ListingForm({
     } else {
         form.setValue('pricePerSqFt', 0);
     }
-  }, [basePrice, builtUpArea, form]);
+  }, [basePrice, builtUpArea, form, priceOnRequest]);
 
   const handleGenerateDescription = async () => {
     startGenerating(async () => {
@@ -303,10 +312,11 @@ export function ListingForm({
                         <FormField control={form.control} name="listingId" render={({ field }) => ( <FormItem><FormLabel>Listing ID</FormLabel><FormControl><Input placeholder="e.g. L1" {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="listingName" render={({ field }) => ( <FormItem><FormLabel>Listing Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="projectName" render={({ field }) => ( <FormItem><FormLabel>Project Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        <FormField control={form.control} name="titleProjectName" render={({ field }) => ( <FormItem><FormLabel>Title Project Name</FormLabel><FormControl><Input placeholder="Public-facing project title" {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="developerName" render={({ field }) => ( <FormItem><FormLabel>Builder / Developer</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="contactPerson" render={({ field }) => ( <FormItem><FormLabel>Contact Person</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="phone" render={({ field }) => ( <FormItem><FormLabel>Phone Number</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
-                        <FormField control={form.control} name="email" render={({ field }) => ( <FormItem><FormLabel>Email Address</FormLabel><FormControl><Input type="email" {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        <FormField control={form.control} name="email" render={({ field }) => ( <FormItem><FormLabel>Email Address (Optional)</FormLabel><FormControl><Input type="email" {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="propertyAddress" render={({ field }) => ( <FormItem><FormLabel>Property Address</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="location" render={({ field }) => ( <FormItem><FormLabel>Location</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="dateOfMeeting" render={({ field }) => ( <FormItem><FormLabel>Date of Meeting</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem> )} />
@@ -332,11 +342,17 @@ export function ListingForm({
                     <FormField control={form.control} name="propertyType" render={({ field }) => (
                         <FormItem><FormLabel>Property Type</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger></FormControl>
-                                <SelectContent>{propertyTypeOptions.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                                <SelectContent>{propertyTypeOptions.filter((o) => o !== 'Other').map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
                             </Select>
                         </FormItem>
                     )} />
-                    <FormField control={form.control} name="propertyTypeOther" render={({ field }) => ( <FormItem><FormLabel>Other Property Type</FormLabel><FormControl><Input disabled={form.watch('propertyType') !== 'Other'} {...field} /></FormControl><FormMessage /></FormItem> )} />
+                    <FormField control={form.control} name="listingType" render={({ field }) => (
+                        <FormItem><FormLabel>Listing Type</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                <SelectContent>{listingTypeOptions.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                            </Select><FormMessage />
+                        </FormItem>
+                    )} />
                     <FormField control={form.control} name="projectStatus" render={({ field }) => (
                         <FormItem><FormLabel>Project Status</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
@@ -391,8 +407,9 @@ export function ListingForm({
                 <CardHeader><CardTitle>Pricing & Payment</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <FormField control={form.control} name="basePrice" render={({ field }) => ( <FormItem><FormLabel>Price (Cr)</FormLabel><FormControl><Input type="number" min="0" step="0.1" {...field} /></FormControl><FormMessage /></FormItem> )} />
-                        <FormField control={form.control} name="pricePerSqFt" render={({ field }) => ( <FormItem><FormLabel>Price per sq.ft</FormLabel><FormControl><Input type="number" min="0" readOnly {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        <FormField control={form.control} name="priceOnRequest" render={({ field }) => ( <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><div className="space-y-0.5"><FormLabel>Price on Request</FormLabel></div><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormMessage /></FormItem> )} />
+                        <FormField control={form.control} name="basePrice" render={({ field }) => ( <FormItem><FormLabel>Price (Cr)</FormLabel><FormControl><Input type="number" min="0" step="0.1" disabled={priceOnRequest} {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        <FormField control={form.control} name="pricePerSqFt" render={({ field }) => ( <FormItem><FormLabel>Price per sq.ft</FormLabel><FormControl><Input type="number" min="0" readOnly disabled={priceOnRequest} {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="taxesApplicableOther" render={({ field }) => ( <FormItem><FormLabel>Other Taxes</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
                     </div>
                     <div><FormLabel>Taxes Applicable</FormLabel><CheckboxGroup name="taxesApplicable" options={taxesOptions} /></div>

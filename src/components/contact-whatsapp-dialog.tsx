@@ -20,6 +20,7 @@ import { isListingAvailable } from '@/lib/crm-status';
 import { EmailDraftDialog } from './email-draft-dialog';
 import { Label } from './ui/label';
 import { markContactPropertiesShared } from '@/app/actions';
+import { formatListingPrice, getListingDisplayTitle } from '@/lib/listing-display';
 
 interface ContactWhatsAppDialogProps {
   isOpen: boolean;
@@ -83,9 +84,9 @@ export function ContactWhatsAppDialog({
                     onCheckedChange={() => toggleListing(listing.id)}
                   />
                   <span className="min-w-0 text-sm">
-                    <span className="block font-medium">{listing.listingName}</span>
+                    <span className="block font-medium">{getListingDisplayTitle(listing)}</span>
                     <span className="block text-muted-foreground">
-                      {listing.bhkConfiguration} {listing.propertyType} · {listing.location} · INR {listing.basePrice} Cr
+                      {listing.bhkConfiguration} {listing.propertyType} · {listing.location} · {formatListingPrice(listing)}
                     </span>
                   </span>
                 </label>

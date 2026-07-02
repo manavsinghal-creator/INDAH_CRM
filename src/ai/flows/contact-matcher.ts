@@ -8,7 +8,7 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { getContacts } from '@/app/actions';
+import { getContacts, getSiteVisits } from '@/app/actions';
 import { createMatchCacheKey, getCachedMatch, setCachedMatch } from '@/lib/ai-match-cache';
 import { MatchMetadataSchema, type Contact, type Listing } from '@/lib/types';
 import { isListingAvailable } from '@/lib/crm-status';
@@ -82,29 +82,34 @@ function scoreContact(contact: Contact, listing: Listing): RankedContact {
   const concernFactors: string[] = [];
 
   const contactBudgetIndex = budgetBands.indexOf(contact.budget);
-  const listingBudgetIndex = listing.basePrice < 1
-    ? 0
-    : listing.basePrice <= 3
-      ? 1
-      : listing.basePrice <= 6
-        ? 2
-        : listing.basePrice <= 10
-          ? 3
-          : listing.basePrice <= 20
-            ? 4
-            : listing.basePrice <= 30
-              ? 5
-              : 6;
-  const budgetDistance = Math.abs(contactBudgetIndex - listingBudgetIndex);
-
-  if (budgetDistance === 0) {
-    localScore += 45;
-    keyFitFactors.push(`Within ${contact.budget} Cr budget`);
-  } else if (budgetDistance === 1) {
+  if (listing.priceOnRequest) {
     localScore += 12;
-    concernFactors.push(`Property may sit outside the ${contact.budget} Cr budget`);
+    keyFitFactors.push('Price available on request');
   } else {
-    concernFactors.push(`Property is outside the ${contact.budget} Cr budget`);
+    const listingBudgetIndex = listing.basePrice < 1
+      ? 0
+      : listing.basePrice <= 3
+        ? 1
+        : listing.basePrice <= 6
+          ? 2
+          : listing.basePrice <= 10
+            ? 3
+            : listing.basePrice <= 20
+              ? 4
+              : listing.basePrice <= 30
+                ? 5
+                : 6;
+    const budgetDistance = Math.abs(contactBudgetIndex - listingBudgetIndex);
+
+    if (budgetDistance === 0) {
+      localScore += 45;
+      keyFitFactors.push(`Within ${contact.budget} Cr budget`);
+    } else if (budgetDistance === 1) {
+      localScore += 12;
+      concernFactors.push(`Property may sit outside the ${contact.budget} Cr budget`);
+    } else {
+      concernFactors.push(`Property is outside the ${contact.budget} Cr budget`);
+    }
   }
 
   if (!contact.locationPreference) {
@@ -143,6 +148,10 @@ function scoreContact(contact: Contact, listing: Listing): RankedContact {
 
   if (contact.status === 'Hot') localScore += 5;
   if (contact.status === 'Warm') localScore += 3;
+  if (contact.offeredListings?.includes(listing.id)) {
+    localScore += 8;
+    keyFitFactors.push('This listing is already in the contact shared-property history');
+  }
 
   return { contact, localScore: Math.min(localScore, 100), keyFitFactors, concernFactors };
 }
@@ -154,7 +163,10 @@ function compactListing(listing: Listing) {
     availabilityStatus: listing.availabilityStatus,
     isActive: listing.isActive,
     listingName: listing.listingName,
+    titleProjectName: listing.titleProjectName,
     projectName: listing.projectName,
+    listingType: listing.listingType || 'Public',
+    priceOnRequest: listing.priceOnRequest || false,
     basePrice: listing.basePrice,
     location: listing.location,
     propertyType: listing.propertyType,
@@ -167,7 +179,7 @@ function compactListing(listing: Listing) {
   };
 }
 
-function compactCandidate(candidate: RankedContact) {
+function compactCandidate(candidate: RankedContact, siteVisits: Awaited<ReturnType<typeof getSiteVisits>>) {
   const { contact } = candidate;
   return {
     id: contact.id,
@@ -178,6 +190,15 @@ function compactCandidate(candidate: RankedContact) {
     locationPreference: contact.locationPreference,
     requirementPurpose: contact.requirementPurpose,
     propertyPreference: contact.propertyPreference,
+    sharedListingIds: contact.offeredListings || [],
+    siteVisits: siteVisits
+      .filter((visit) => visit.contactId === contact.id)
+      .slice(0, 5)
+      .map((visit) => ({
+        visitAt: visit.visitAt,
+        listingsShown: visit.listingLabels,
+        notes: visit.notes?.slice(0, 180),
+      })),
     notes: contact.notes?.slice(0, 300),
     localFitScore: candidate.localScore,
     localFitFactors: candidate.keyFitFactors,
@@ -249,13 +270,23 @@ const contactMatcherFlow = ai.defineFlow(
     if (!isListingAvailable(listing)) {
       return createLocalFallback([]);
     }
-    const cacheKey = createMatchCacheKey('contact-matcher', compactListing(listing));
+    const allContacts = await getContacts();
+    const siteVisits = await getSiteVisits();
+    const cacheKey = createMatchCacheKey('contact-matcher', {
+      listing: compactListing(listing),
+      contactsUpdatedAt: allContacts.map((contact) => [contact.id, contact.updatedAt, contact.leadStage, contact.offeredListings]).slice(0, 80),
+      siteVisitsUpdatedAt: siteVisits.map((visit) => [visit.id, visit.contactId, visit.updatedAt]).slice(0, 80),
+    });
     const cachedResult = getCachedMatch<ContactMatcherOutput>(cacheKey);
     if (cachedResult) return cachedResult;
 
-    const allContacts = await getContacts();
     const candidates = allContacts
-      .filter((contact) => contact.contactType === 'Buyer' && contact.isActive !== false)
+      .filter((contact) => (
+        contact.contactType === 'Buyer'
+        && contact.isActive !== false
+        && contact.leadStage !== 'Closed/Lost'
+        && contact.leadStage !== 'Disqualified'
+      ))
       .map((contact) => scoreContact(contact, listing))
       .filter((candidate) => candidate.localScore >= MIN_LOCAL_CANDIDATE_SCORE)
       .sort((left, right) => right.localScore - left.localScore)
@@ -273,7 +304,7 @@ const contactMatcherFlow = ai.defineFlow(
     try {
       const { output } = await prompt({
         listing: JSON.stringify(compactListing(listing)),
-        contacts: JSON.stringify(candidates.map(compactCandidate)),
+        contacts: JSON.stringify(candidates.map((candidate) => compactCandidate(candidate, siteVisits))),
       }, {
         abortSignal: abortController.signal,
       });

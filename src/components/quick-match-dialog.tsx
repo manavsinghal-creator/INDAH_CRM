@@ -41,6 +41,7 @@ import { WhatsAppDraftDialog } from './whatsapp-draft-dialog';
 import { MatchSourceBadge } from './match-source-badge';
 import { ContactForm } from './contact-form';
 import { EmailDraftDialog } from './email-draft-dialog';
+import { formatListingPrice, getListingDisplayTitle } from '@/lib/listing-display';
 
 type MatchedListing = QuickPropertyMatcherOutput['matchedListings'][0];
 type FormData = z.infer<typeof QuickPropertyMatcherInputSchema>;
@@ -145,7 +146,7 @@ export function QuickMatchDialog() {
         : '<1',
       locationPreference: criteria.locationPreference || '',
     };
-  }, [form, matchData]);
+  }, [form]);
 
   const handleShared = () => {
     if (!selectedRecipient || selectedRecipient.type !== 'Contact') return;
@@ -238,10 +239,10 @@ export function QuickMatchDialog() {
                                    <Checkbox checked={selectedListings.some(l => l.recordId === listing.recordId)} onCheckedChange={() => handleToggleListing(listing)} className="mt-1" />
                                    <Card className="flex-1">
                                        <CardHeader className="p-4">
-                                            <CardTitle className="text-base">{listing.listingName}</CardTitle>
+                                            <CardTitle className="text-base">{getListingDisplayTitle(listing)}</CardTitle>
                                             <p className="text-xs font-mono text-muted-foreground">Listing ID: {listing.listingId || 'Not assigned'}</p>
                                             <CardDescription>{listing.bhkConfiguration} {listing.propertyType} in {listing.location}</CardDescription>
-                                            <p className="text-sm font-semibold pt-1">Rs. {listing.basePrice} Cr.</p>
+                                            <p className="text-sm font-semibold pt-1">{formatListingPrice(listing)}</p>
                                             {listing.matchScore != null && (
                                               <p className="text-xs text-muted-foreground">
                                                 {listing.matchScore}% match{listing.matchReason ? ` · ${listing.matchReason}` : ''}

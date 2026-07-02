@@ -2,10 +2,12 @@ export type WhatsAppListing = {
   id: string;
   listingId?: string;
   listingName: string;
+  titleProjectName?: string;
   location: string;
   bhkConfiguration: string;
   propertyType: string;
   basePrice: number;
+  priceOnRequest?: boolean;
   listingUrl?: string;
   externalPublicLink?: string;
   matchReason?: string;
@@ -27,35 +29,42 @@ export function formatListingPrice(price: number) {
 
 function listingBlock(listing: WhatsAppListing) {
   const link = listing.externalPublicLink || listing.listingUrl;
+  const title = listing.titleProjectName || listing.listingName;
+  const highlights = listing.matchReason
+    ? listing.matchReason
+      .replace(/^why it matches:\s*/i, '')
+      .replace(/\.$/, '')
+    : '';
   return [
-    `*${listing.listingName}*${listing.listingId ? ` (${listing.listingId})` : ''}`,
-    listing.matchReason ? `Why it matches: ${listing.matchReason}` : null,
-    `Price: ${formatListingPrice(listing.basePrice)}`,
+    `*${title}*${listing.listingId ? ` (${listing.listingId})` : ''}`,
+    `${listing.bhkConfiguration} ${listing.propertyType} in ${listing.location}`,
+    `Price: ${listing.priceOnRequest ? 'Price on request' : formatListingPrice(listing.basePrice)}`,
+    highlights ? `Highlights: ${highlights}` : null,
     `Location: ${listing.location}`,
-    `Configuration: ${listing.bhkConfiguration} ${listing.propertyType}`,
-    link ? `View listing: ${link}` : null,
+    link ? `Please open this link to see the photos and full details: ${link}` : null,
   ].filter(Boolean).join('\n');
 }
 
 export function generateWhatsAppDraft(recipientName: string, listings: WhatsAppListing[]) {
   const firstName = recipientName.trim().split(/\s+/)[0] || 'there';
   const intro = listings.length === 1
-    ? 'I found a property that looks like a strong match for your preferences:'
-    : 'I found a few properties that look like strong matches for your preferences:';
+    ? 'I found one property that is worth your attention based on what you had discussed with us.'
+    : 'I shortlisted a few properties that are worth your attention based on what you had discussed with us.';
+  const cta = listings.length === 1
+    ? 'Please open the link once and tell me if you would like me to share more details or plan a site visit.'
+    : 'Please open the links once and tell me which ones you would like to discuss or visit.';
 
   return [
-    `Hello ${firstName},`,
+    `Hi ${firstName},`,
     '',
     intro,
     '',
     listings.map(listingBlock).join('\n\n'),
     '',
-    listings.length === 1
-      ? 'Would you like more details or to arrange a viewing?'
-      : 'Which of these would you like to explore further?',
+    cta,
     '',
-    'Best regards,',
-    'INDAH LIVING',
+    'Regards,',
+    'INDAH Sales Team',
   ].join('\n');
 }
 

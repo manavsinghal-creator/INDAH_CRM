@@ -5,7 +5,7 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { getListings } from '@/app/actions';
+import { getListings, getSiteVisits } from '@/app/actions';
 import { createMatchCacheKey, getCachedMatch, setCachedMatch } from '@/lib/ai-match-cache';
 import {
   compactListingForMatch,
@@ -59,6 +59,21 @@ function compactContact(contact: Contact) {
     requirementPurpose: contact.requirementPurpose,
     propertyPreference: contact.propertyPreference,
     notes: contact.notes?.slice(0, 300),
+  };
+}
+
+function compactContactWithSiteVisits(contact: Contact, siteVisits: Awaited<ReturnType<typeof getSiteVisits>>) {
+  return {
+    ...compactContact(contact),
+    siteVisits: siteVisits
+      .filter((visit) => visit.contactId === contact.id)
+      .slice(0, 8)
+      .map((visit) => ({
+        visitAt: visit.visitAt,
+        listingsShown: visit.listingLabels,
+        notes: visit.notes?.slice(0, 220),
+      })),
+    sharedListingIds: contact.offeredListings || [],
   };
 }
 
@@ -138,7 +153,9 @@ const propertyMatcherFlow = ai.defineFlow(
   },
   async (input) => {
     const contact = input.contact as Contact;
-    const cacheKey = createMatchCacheKey('property-matcher', compactContact(contact));
+    const siteVisits = await getSiteVisits();
+    const compactBuyerProfile = compactContactWithSiteVisits(contact, siteVisits);
+    const cacheKey = createMatchCacheKey('property-matcher', compactBuyerProfile);
     const cachedResult = getCachedMatch<PropertyMatcherOutput>(cacheKey);
     if (cachedResult) return cachedResult;
 
@@ -161,7 +178,7 @@ const propertyMatcherFlow = ai.defineFlow(
 
     try {
       const { output } = await prompt({
-        contact: JSON.stringify(compactContact(contact)),
+        contact: JSON.stringify(compactBuyerProfile),
         listings: JSON.stringify(candidates.map(compactListingForMatch)),
       }, {
         abortSignal: abortController.signal,

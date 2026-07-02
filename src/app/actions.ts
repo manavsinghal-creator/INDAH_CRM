@@ -43,6 +43,8 @@ function withLegacyContactOwnership(contact: Contact): Contact {
         budget: String(contact.budget) === '>10' ? '10-20' : contact.budget,
         leadStage: contact.leadStage || 'New',
         requirementPurpose: contact.requirementPurpose || [],
+        closedLostReason: contact.closedLostReason || '',
+        disqualifiedReason: contact.disqualifiedReason || '',
         createdByName: contact.createdByName || 'Admin',
         createdByEmail: contact.createdByEmail || PRIMARY_ADMIN_EMAIL,
         updatedByName: contact.updatedByName || contact.createdByName || 'Admin',
@@ -54,6 +56,9 @@ function withLegacyListingAvailability(listing: Listing): Listing {
     return {
         ...listing,
         availabilityStatus: getListingAvailability(listing),
+        listingType: listing.listingType || 'Public',
+        priceOnRequest: listing.priceOnRequest || false,
+        titleProjectName: listing.titleProjectName || '',
     };
 }
 
@@ -340,9 +345,12 @@ export async function updateContact(id: string, formData: z.infer<typeof Contact
     }
 }
 
-export async function updateContactLeadStage(id: string, leadStage: LeadStage): Promise<{ success: boolean; contact?: Contact; error?: string }> {
+export async function updateContactLeadStage(id: string, leadStage: LeadStage, reason?: string): Promise<{ success: boolean; contact?: Contact; error?: string }> {
     const user = await requireAuthorizedUser();
     if (!leadStageOptions.includes(leadStage)) return { success: false, error: 'Invalid pipeline stage.' };
+    const trimmedReason = reason?.trim() || '';
+    if (leadStage === 'Closed/Lost' && !trimmedReason) return { success: false, error: 'Closed/Lost reason is required.' };
+    if (leadStage === 'Disqualified' && !trimmedReason) return { success: false, error: 'Disqualified reason is required.' };
 
     if (!isCrmDatabaseConfigured) {
         const existing = demoContacts.find((contact) => contact.id === id);
@@ -350,6 +358,8 @@ export async function updateContactLeadStage(id: string, leadStage: LeadStage): 
         const contact = updateDemoContact(id, {
             ...existing,
             leadStage,
+            closedLostReason: leadStage === 'Closed/Lost' ? trimmedReason : existing.closedLostReason || '',
+            disqualifiedReason: leadStage === 'Disqualified' ? trimmedReason : existing.disqualifiedReason || '',
         });
         clearMatchCache();
         revalidatePath('/');
@@ -364,6 +374,8 @@ export async function updateContactLeadStage(id: string, leadStage: LeadStage): 
         const previousStage = beforeData.leadStage || 'New';
         const updatedData = {
             leadStage,
+            ...(leadStage === 'Closed/Lost' ? { closedLostReason: trimmedReason } : {}),
+            ...(leadStage === 'Disqualified' ? { disqualifiedReason: trimmedReason } : {}),
             updatedByName: user.name,
             updatedByEmail: user.email,
             updatedAt: serverTimestamp(),
@@ -385,7 +397,12 @@ export async function updateContactLeadStage(id: string, leadStage: LeadStage): 
                     field: 'leadStage',
                     before: displayActivityValue(previousStage),
                     after: displayActivityValue(leadStage),
-                }]
+                },
+                ...(trimmedReason ? [{
+                    field: leadStage === 'Closed/Lost' ? 'closedLostReason' : 'disqualifiedReason',
+                    before: '—',
+                    after: trimmedReason,
+                }] : [])]
                 : [],
         });
         return {
@@ -549,14 +566,17 @@ export async function addSiteVisit(formData: z.infer<typeof SiteVisitFormSchema>
     const listingLabels = selectedListings.map((listing) => listing.listingId
         ? `${listing.listingId} - ${listing.listingName}`
         : listing.listingName);
+    const uniqueListingIds = [...new Set(result.data.listingIds.filter(Boolean))];
     const previousStage = getContactLeadStage(contact);
     const shouldUpdatePipeline = result.data.updatePipeline !== false && previousStage !== 'Site Visit';
 
     if (!isCrmDatabaseConfigured) {
         const siteVisit = addDemoSiteVisit(result.data, contact.name, listingLabels);
-        const updatedContact = shouldUpdatePipeline
-            ? updateDemoContact(contact.id, { ...contact, leadStage: 'Site Visit' })
-            : contact;
+        const updatedContact = updateDemoContact(contact.id, {
+            ...contact,
+            offeredListings: [...new Set([...(contact.offeredListings || []), ...uniqueListingIds])],
+            leadStage: shouldUpdatePipeline ? 'Site Visit' : getContactLeadStage(contact),
+        }) || contact;
         clearMatchCache();
         revalidatePath('/');
         revalidatePath('/site-visits');
@@ -581,10 +601,12 @@ export async function addSiteVisit(formData: z.infer<typeof SiteVisitFormSchema>
         const docRef = await addDoc(siteVisitsCollection, newSiteVisitData);
         let savedContact: Contact | undefined;
 
-        if (shouldUpdatePipeline) {
+        if (shouldUpdatePipeline || uniqueListingIds.length) {
             const contactRef = doc(db, 'contacts', contact.id);
+            const updatedOfferedListings = [...new Set([...(contact.offeredListings || []), ...uniqueListingIds])];
             await updateDoc(contactRef, {
-                leadStage: 'Site Visit',
+                ...(shouldUpdatePipeline ? { leadStage: 'Site Visit' } : {}),
+                ...(uniqueListingIds.length ? { offeredListings: updatedOfferedListings } : {}),
                 updatedByName: user.name,
                 updatedByEmail: user.email,
                 updatedAt: serverTimestamp(),
@@ -618,6 +640,7 @@ export async function addSiteVisit(formData: z.infer<typeof SiteVisitFormSchema>
             changes: [
                 { field: 'contact', before: '—', after: contact.name },
                 { field: 'listingsShown', before: '—', after: listingLabels.length ? listingLabels.join(', ') : 'No listings selected' },
+                ...(listingLabels.length ? [{ field: 'propertiesShared', before: '—', after: listingLabels.join(', ') }] : []),
                 { field: 'visitAt', before: '—', after: result.data.visitAt },
                 ...(result.data.notes ? [{ field: 'notes', before: '—', after: result.data.notes }] : []),
                 ...(shouldUpdatePipeline ? [{

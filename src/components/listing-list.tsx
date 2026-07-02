@@ -67,6 +67,7 @@ import { QuickMatchDialog } from './quick-match-dialog';
 import { getListingAvailability, isListingAvailable } from '@/lib/crm-status';
 import { ContactMatchDialog } from './contact-match-dialog';
 import { RefreshButton } from './refresh-button';
+import { formatListingPrice, getListingDisplayTitle } from '@/lib/listing-display';
 
 
 type SortKey = keyof Pick<Listing, 'listingId' | 'listingName' | 'projectName' | 'propertyType' | 'location' | 'bhkConfiguration' | 'carpetArea' | 'builtUpArea' | 'projectStatus' | 'availabilityStatus' | 'basePrice' | 'pricePerSqFt' | 'totalUnits' | 'availableUnits' | 'plotArea' | 'furnishing' | 'websiteStatus' | 'exclusiveMandate' | 'updatedAt' | 'externalPublicLink' | 'isActive'>;
@@ -167,7 +168,9 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
         const matchesSearch = (
             (listing.listingId && listing.listingId.toLowerCase().includes(query)) ||
             (listing.listingName && listing.listingName.toLowerCase().includes(query)) ||
+            (listing.titleProjectName && listing.titleProjectName.toLowerCase().includes(query)) ||
             listing.projectName.toLowerCase().includes(query) ||
+            (listing.listingType && listing.listingType.toLowerCase().includes(query)) ||
             listing.propertyType.toLowerCase().includes(query) ||
             listing.bhkConfiguration.toLowerCase().includes(query) ||
             listing.location.toLowerCase().includes(query) ||
@@ -387,7 +390,7 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
                             />
                           </TableCell>
                           <TableCell className="font-mono text-muted-foreground">{listing.listingId}</TableCell>
-                          <TableCell className="font-medium">{listing.listingName}</TableCell>
+                          <TableCell className="font-medium">{getListingDisplayTitle(listing)}</TableCell>
                           <TableCell><Badge variant={isListingAvailable(listing) ? 'default' : 'outline'}>{getListingAvailability(listing)}</Badge></TableCell>
                           <TableCell>{listing.projectName}</TableCell>
                           <TableCell>{listing.propertyType}</TableCell>
@@ -396,8 +399,8 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
                           <TableCell>{listing.carpetArea?.toLocaleString('en-IN')}</TableCell>
                           <TableCell>{listing.builtUpArea?.toLocaleString('en-IN')}</TableCell>
                           <TableCell><Badge variant="outline">{listing.projectStatus}</Badge></TableCell>
-                          <TableCell>{listing.basePrice.toLocaleString('en-IN')}</TableCell>
-                          <TableCell>{listing.pricePerSqFt?.toLocaleString('en-IN')}</TableCell>
+                          <TableCell>{formatListingPrice(listing)}</TableCell>
+                          <TableCell>{listing.priceOnRequest ? '-' : listing.pricePerSqFt?.toLocaleString('en-IN')}</TableCell>
                           <TableCell>{listing.totalUnits?.toLocaleString('en-IN')}</TableCell>
                           <TableCell>{listing.availableUnits?.toLocaleString('en-IN')}</TableCell>
                           <TableCell>{listing.plotArea?.toLocaleString('en-IN')}</TableCell>

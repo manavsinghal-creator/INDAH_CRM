@@ -89,6 +89,12 @@ export function ContactViewDialog({ isOpen, onOpenChange, contact, allListings }
                 <DetailItem label="Pipeline Stage">
                     <LeadStageBadge stage={getContactLeadStage(contact)} className="w-fit" />
                 </DetailItem>
+                {getContactLeadStage(contact) === 'Closed/Lost' && (
+                    <DetailItem label="Closed/Lost Reason" value={contact.closedLostReason} />
+                )}
+                {getContactLeadStage(contact) === 'Disqualified' && (
+                    <DetailItem label="Disqualified Reason" value={contact.disqualifiedReason} />
+                )}
             </div>
             
             <Separator/>

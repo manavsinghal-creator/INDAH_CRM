@@ -15,6 +15,7 @@ const navItems = [
   { href: '/listings', label: 'Listings' },
   { href: '/partners', label: 'Channel Partners' },
   { href: '/metrics', label: 'Metrics' },
+  { href: '/reports', label: 'Reports' },
   { href: '/tasks', label: 'Tasks' },
   { href: '/site-visits', label: 'Site Visits' },
   { href: '/activity', label: 'Activity Log' },

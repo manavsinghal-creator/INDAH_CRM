@@ -28,6 +28,7 @@ import { MoreHorizontal, Edit, Trash2, Eye, Copy, ExternalLink, Link as LinkIcon
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { getListingAvailability, isListingAvailable } from '@/lib/crm-status';
+import { formatListingPrice, getListingDisplayTitle } from '@/lib/listing-display';
 
 interface ListingCardProps {
   listing: Listing;
@@ -90,7 +91,7 @@ export function ListingCard({
             disabled={!isAvailable}
           />
           <div className="flex-1">
-            <CardTitle className="text-base text-foreground">{listing.listingName}</CardTitle>
+            <CardTitle className="text-base text-foreground">{getListingDisplayTitle(listing)}</CardTitle>
             <CardDescription>{listing.location}</CardDescription>
           </div>
           <Button
@@ -140,17 +141,18 @@ export function ListingCard({
               <Badge variant="outline">{listing.bhkConfiguration}</Badge>
               <Badge variant={isAvailable ? 'default' : 'outline'}>{availability}</Badge>
             </div>
-            <div className={cn("font-bold text-lg text-primary", !isAvailable && "text-foreground")}>₹{listing.basePrice} Cr.</div>
+            <div className={cn("text-right text-lg font-bold text-primary", !isAvailable && "text-foreground")}>{formatListingPrice(listing)}</div>
         </div>
         <div className="space-y-1 rounded-md border p-2 bg-background/50">
             <DetailItem label="Listing ID" value={listing.listingId} />
             <DetailItem label="Project Name" value={listing.projectName} />
+            <DetailItem label="Listing Type" value={listing.listingType || 'Public'} />
             <DetailItem label="Property Type" value={listing.propertyType} />
             <DetailItem label="Built Up Area" value={listing.builtUpArea ? `${listing.builtUpArea?.toLocaleString('en-IN')} sq.ft` : '-'} />
             <DetailItem label="Carpet Area" value={listing.carpetArea ? `${listing.carpetArea?.toLocaleString('en-IN')} sq.ft` : '-'} />
             <DetailItem label="Plot Area" value={listing.plotArea ? `${listing.plotArea?.toLocaleString('en-IN')} sq.m` : '-'} />
             <DetailItem label="Available Units" value={listing.availableUnits?.toLocaleString('en-IN')} />
-            <DetailItem label="Price/SqFt" value={listing.pricePerSqFt ? `₹${listing.pricePerSqFt?.toLocaleString('en-IN')}` : '-'} />
+            <DetailItem label="Price/SqFt" value={listing.priceOnRequest ? '-' : listing.pricePerSqFt ? `₹${listing.pricePerSqFt?.toLocaleString('en-IN')}` : '-'} />
             <DetailItem label="Project Status">
                 <Badge variant="secondary" className="text-xs">{listing.projectStatus}</Badge>
             </DetailItem>
