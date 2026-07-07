@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { CalendarClock, CheckCircle2 } from 'lucide-react';
 
-import { addSiteVisit } from '@/app/actions';
+import { addSiteVisit, updateSiteVisit } from '@/app/actions';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -46,6 +46,7 @@ type SiteVisitFormDialogProps = {
   listings: Listing[];
   initialContactId?: string;
   initialListingIds?: string[];
+  siteVisit?: SiteVisit | null;
   onSaved?: (siteVisit: SiteVisit, contact?: Contact) => void;
 };
 
@@ -56,8 +57,10 @@ export function SiteVisitFormDialog({
   listings,
   initialContactId,
   initialListingIds = [],
+  siteVisit,
   onSaved,
 }: SiteVisitFormDialogProps) {
+  const isEditing = Boolean(siteVisit);
   const eligibleContacts = React.useMemo(
     () => contacts.filter((contact) => contact.contactType !== 'Seller'),
     [contacts]
@@ -79,13 +82,13 @@ export function SiteVisitFormDialog({
 
   React.useEffect(() => {
     if (!isOpen) return;
-    setContactId(initialContactId || eligibleContacts[0]?.id || '');
-    setListingIds(stableInitialListingIds);
-    setVisitAt(toDateTimeLocal());
-    setNotes('');
+    setContactId(siteVisit?.contactId || initialContactId || eligibleContacts[0]?.id || '');
+    setListingIds(siteVisit?.listingIds || stableInitialListingIds);
+    setVisitAt(toDateTimeLocal(siteVisit?.visitAt));
+    setNotes(siteVisit?.notes || '');
     setUpdatePipeline(true);
     setErrors({});
-  }, [eligibleContacts, initialContactId, isOpen, stableInitialListingIds]);
+  }, [eligibleContacts, initialContactId, isOpen, siteVisit, stableInitialListingIds]);
 
   const selectedContact = contacts.find((contact) => contact.id === contactId);
 
@@ -98,18 +101,21 @@ export function SiteVisitFormDialog({
   const handleSubmit = () => {
     startTransition(async () => {
       setErrors({});
-      const result = await addSiteVisit({
+      const payload = {
         contactId,
         listingIds,
         visitAt: toIsoFromLocal(visitAt),
         notes,
         updatePipeline,
-      });
+      };
+      const result = siteVisit
+        ? await updateSiteVisit(siteVisit.id, payload)
+        : await addSiteVisit(payload);
 
       if (!result.success || !result.siteVisit) {
         setErrors(result.error || {});
         toast({
-          title: 'Could not log site visit',
+          title: isEditing ? 'Could not update site visit' : 'Could not log site visit',
           description: result.error?._form?.[0] || 'Please check the selected contact.',
           variant: 'destructive',
         });
@@ -117,7 +123,7 @@ export function SiteVisitFormDialog({
       }
 
       toast({
-        title: 'Site visit logged',
+        title: isEditing ? 'Site visit updated' : 'Site visit logged',
         description: `${selectedContact?.name || 'Contact'} visit saved successfully.`,
       });
       onSaved?.(result.siteVisit, result.contact);
@@ -131,10 +137,12 @@ export function SiteVisitFormDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CalendarClock className="h-5 w-5 text-primary" />
-            Log Site Visit
+            {isEditing ? 'Edit Site Visit' : 'Log Site Visit'}
           </DialogTitle>
           <DialogDescription>
-            Record which buyer visited which listings. Time and agent are saved automatically.
+            {isEditing
+              ? 'Update the visit time, listings shown, or notes for this visit.'
+              : 'Record which buyer visited which listings. Time and agent are saved automatically.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -207,22 +215,24 @@ export function SiteVisitFormDialog({
             />
           </div>
 
-          <label className="flex items-start gap-3 rounded-md border bg-muted/30 p-3 text-sm">
-            <Checkbox
-              checked={updatePipeline}
-              onCheckedChange={(checked) => setUpdatePipeline(Boolean(checked))}
-              className="mt-0.5"
-            />
-            <span>
-              <span className="flex items-center gap-2 font-medium">
-                <CheckCircle2 className="h-4 w-4 text-primary" />
-                Move contact to Site Visit pipeline
+          {!isEditing && (
+            <label className="flex items-start gap-3 rounded-md border bg-muted/30 p-3 text-sm">
+              <Checkbox
+                checked={updatePipeline}
+                onCheckedChange={(checked) => setUpdatePipeline(Boolean(checked))}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="flex items-center gap-2 font-medium">
+                  <CheckCircle2 className="h-4 w-4 text-primary" />
+                  Move contact to Site Visit pipeline
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  Recommended when this visit is logged for an active buyer.
+                </span>
               </span>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                Recommended when this visit is logged for an active buyer.
-              </span>
-            </span>
-          </label>
+            </label>
+          )}
         </div>
 
         <DialogFooter>
@@ -230,7 +240,7 @@ export function SiteVisitFormDialog({
             Cancel
           </Button>
           <Button type="button" onClick={handleSubmit} disabled={isPending}>
-            {isPending ? 'Saving...' : 'Save Visit'}
+            {isPending ? 'Saving...' : isEditing ? 'Update Visit' : 'Save Visit'}
           </Button>
         </DialogFooter>
       </DialogContent>

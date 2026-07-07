@@ -4,10 +4,14 @@ export type WhatsAppListing = {
   listingName: string;
   titleProjectName?: string;
   location: string;
+  description?: string;
   bhkConfiguration: string;
   propertyType: string;
   basePrice: number;
   priceOnRequest?: boolean;
+  projectStatus?: string;
+  expectedPossessionDate?: string;
+  usps?: string[];
   listingUrl?: string;
   externalPublicLink?: string;
   matchReason?: string;
@@ -24,24 +28,59 @@ export function normalizeWhatsAppPhone(phone: string): string | null {
 }
 
 export function formatListingPrice(price: number) {
-  return `INR ${Number(price).toLocaleString('en-IN')} Cr`;
+  return `INR ${Number(price).toLocaleString('en-IN', { maximumFractionDigits: 2 })} Cr`;
+}
+
+function formatPossession(listing: WhatsAppListing) {
+  if (listing.projectStatus === 'Ready to Move') return 'Ready to move in';
+  if (listing.projectStatus === 'Under Construction') {
+    return listing.expectedPossessionDate
+      ? `Under construction, expected possession ${listing.expectedPossessionDate}`
+      : 'Under construction';
+  }
+  return listing.projectStatus || 'Status available on request';
+}
+
+function fallbackUsps(listing: WhatsAppListing) {
+  const values = [
+    listing.location ? `Located in ${listing.location}` : null,
+    listing.propertyType ? `${listing.propertyType} format` : null,
+    listing.bhkConfiguration ? `${listing.bhkConfiguration} configuration` : null,
+    listing.projectStatus ? formatPossession(listing) : null,
+    listing.matchReason
+      ? listing.matchReason
+        .replace(/^why it matches:\s*/i, '')
+        .replace(/\.$/, '')
+      : null,
+  ];
+  return values.filter((value): value is string => Boolean(value));
+}
+
+function formatUsps(listing: WhatsAppListing) {
+  const usps = (listing.usps?.length ? listing.usps : fallbackUsps(listing))
+    .map((usp) => usp.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+
+  if (!usps.length) return ['Details and investment fit can be reviewed on the website link.'];
+  return usps;
 }
 
 function listingBlock(listing: WhatsAppListing) {
   const link = listing.externalPublicLink || listing.listingUrl;
   const title = listing.titleProjectName || listing.listingName;
-  const highlights = listing.matchReason
-    ? listing.matchReason
-      .replace(/^why it matches:\s*/i, '')
-      .replace(/\.$/, '')
-    : '';
+  const description = listing.description?.trim()
+    || `${listing.bhkConfiguration} ${listing.propertyType} in ${listing.location}`;
+  const usps = formatUsps(listing);
+
   return [
-    `*${title}*${listing.listingId ? ` (${listing.listingId})` : ''}`,
-    `${listing.bhkConfiguration} ${listing.propertyType} in ${listing.location}`,
+    `*${title}*`,
+    `Description: ${description}`,
     `Price: ${listing.priceOnRequest ? 'Price on request' : formatListingPrice(listing.basePrice)}`,
-    highlights ? `Highlights: ${highlights}` : null,
-    `Location: ${listing.location}`,
-    link ? `Please open this link to see the photos and full details: ${link}` : null,
+    'Key highlights:',
+    ...usps.map((usp, index) => `${index + 1}. ${usp}`),
+    `Position: ${formatPossession(listing)}`,
+    link ? `Website link: ${link}` : null,
   ].filter(Boolean).join('\n');
 }
 
@@ -51,8 +90,8 @@ export function generateWhatsAppDraft(recipientName: string, listings: WhatsAppL
     ? 'I found one property that is worth your attention based on what you had discussed with us.'
     : 'I shortlisted a few properties that are worth your attention based on what you had discussed with us.';
   const cta = listings.length === 1
-    ? 'Please open the link once and tell me if you would like me to share more details or plan a site visit.'
-    : 'Please open the links once and tell me which ones you would like to discuss or visit.';
+    ? 'Please open the website link once, see the photos and details, and tell me if you would like me to arrange a site visit.'
+    : 'Please open the website links once, see the photos and details, and tell me which options you would like to discuss or visit.';
 
   return [
     `Hi ${firstName},`,

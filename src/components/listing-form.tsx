@@ -408,7 +408,7 @@ export function ListingForm({
                 <CardContent className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         <FormField control={form.control} name="priceOnRequest" render={({ field }) => ( <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm"><div className="space-y-0.5"><FormLabel>Price on Request</FormLabel></div><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormMessage /></FormItem> )} />
-                        <FormField control={form.control} name="basePrice" render={({ field }) => ( <FormItem><FormLabel>Price (Cr)</FormLabel><FormControl><Input type="number" min="0" step="0.1" disabled={priceOnRequest} {...field} /></FormControl><FormMessage /></FormItem> )} />
+                        <FormField control={form.control} name="basePrice" render={({ field }) => ( <FormItem><FormLabel>Price (Cr)</FormLabel><FormControl><Input type="number" min="0" step="0.01" inputMode="decimal" placeholder="e.g. 1.55" disabled={priceOnRequest} {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="pricePerSqFt" render={({ field }) => ( <FormItem><FormLabel>Price per sq.ft</FormLabel><FormControl><Input type="number" min="0" readOnly disabled={priceOnRequest} {...field} /></FormControl><FormMessage /></FormItem> )} />
                         <FormField control={form.control} name="taxesApplicableOther" render={({ field }) => ( <FormItem><FormLabel>Other Taxes</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem> )} />
                     </div>
