@@ -44,6 +44,7 @@ export function ChannelPartnerViewDialog({ isOpen, onOpenChange, partner }: Chan
   if (!partner) return null;
 
   const initials = partner.name.split(' ').map((n) => n[0]).join('');
+  const companyLabel = partner.companyName?.trim() || 'No company added';
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -56,14 +57,14 @@ export function ChannelPartnerViewDialog({ isOpen, onOpenChange, partner }: Chan
                 <div className="grid gap-1">
                     <DialogTitle className="text-2xl">{partner.name}</DialogTitle>
                     <DialogDescription>
-                        {partner.companyName} (ID: {partner.serialNumber})
+                        {companyLabel} (ID: {partner.serialNumber})
                     </DialogDescription>
                 </div>
             </div>
         </DialogHeader>
         <ScrollArea className="max-h-[60vh]">
           <div className="space-y-6 p-4">
-            <DetailItem icon={Mail} label="Email Address" value={partner.email} />
+            <DetailItem icon={Mail} label="Email Address" value={partner.email || 'No email added'} />
             <Separator />
             <DetailItem icon={Phone} label="Phone Number" value={partner.phone} />
             {partner.alternatePhone && (

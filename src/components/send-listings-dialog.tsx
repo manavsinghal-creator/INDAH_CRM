@@ -126,7 +126,7 @@ export function SendListingsDialog({
                             <SelectLabel>Channel Partners</SelectLabel>
                              {partners.map(partner => (
                                 <SelectItem key={partner.id} value={partner.id}>
-                                    {partner.name} ({partner.companyName})
+                                    {partner.companyName ? `${partner.name} (${partner.companyName})` : partner.name}
                                 </SelectItem>
                             ))}
                         </SelectGroup>
