@@ -124,10 +124,10 @@ export function ChannelPartnerForm({
                 <FormItem><FormLabel>Name</FormLabel><FormControl><Input placeholder="e.g. John Doe" {...field} /></FormControl><FormMessage /></FormItem>
               )} />
               <FormField control={form.control} name="companyName" render={({ field }) => (
-                <FormItem><FormLabel>Company Name</FormLabel><FormControl><Input placeholder="e.g. JD Realty" {...field} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormLabel>Company Name (Optional)</FormLabel><FormControl><Input placeholder="e.g. JD Realty" {...field} /></FormControl><FormMessage /></FormItem>
               )} />
               <FormField control={form.control} name="email" render={({ field }) => (
-                <FormItem><FormLabel>Email ID</FormLabel><FormControl><Input type="email" placeholder="e.g. john.doe@example.com" {...field} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormLabel>Email ID (Optional)</FormLabel><FormControl><Input type="email" placeholder="e.g. john.doe@example.com" {...field} /></FormControl><FormMessage /></FormItem>
               )} />
               <FormField control={form.control} name="phone" render={({ field }) => (
                 <FormItem><FormLabel>Phone Number</FormLabel><FormControl><Input placeholder="e.g. 9876543210" {...field} /></FormControl><FormMessage /></FormItem>

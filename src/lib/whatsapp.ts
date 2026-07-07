@@ -66,19 +66,40 @@ function formatUsps(listing: WhatsAppListing) {
   return usps;
 }
 
+function formatHighlightSentence(usps: string[]) {
+  if (usps.length === 1) return `Highlight: ${usps[0]}.`;
+  if (usps.length === 2) return `Highlights include ${usps[0]} and ${usps[1]}.`;
+
+  const last = usps[usps.length - 1];
+  return `Highlights include ${usps.slice(0, -1).join(', ')}, and ${last}.`;
+}
+
+function shortDescription(listing: WhatsAppListing) {
+  const status = listing.projectStatus === 'Ready to Move'
+    ? 'ready-to-move'
+    : listing.projectStatus === 'Under Construction'
+      ? 'under-construction'
+      : null;
+  const firstLine = `${listing.bhkConfiguration} ${listing.propertyType} in ${listing.location}${status ? `, ${status}` : ''}.`;
+  const secondLine = listing.propertyType === 'Villa'
+    ? 'A clean villa option for lifestyle use or long-term value.'
+    : listing.propertyType === 'Apartment'
+      ? 'A smart apartment option with practical end-use or investment appeal.'
+      : 'A focused property option worth reviewing for end-use or investment.';
+
+  return `${firstLine}\n${secondLine}`;
+}
+
 function listingBlock(listing: WhatsAppListing) {
   const link = listing.externalPublicLink || listing.listingUrl;
   const title = listing.titleProjectName || listing.listingName;
-  const description = listing.description?.trim()
-    || `${listing.bhkConfiguration} ${listing.propertyType} in ${listing.location}`;
   const usps = formatUsps(listing);
 
   return [
     `*${title}*`,
-    `Description: ${description}`,
+    `Description:\n${shortDescription(listing)}`,
     `Price: ${listing.priceOnRequest ? 'Price on request' : formatListingPrice(listing.basePrice)}`,
-    'Key highlights:',
-    ...usps.map((usp, index) => `${index + 1}. ${usp}`),
+    formatHighlightSentence(usps),
     `Position: ${formatPossession(listing)}`,
     link ? `Website link: ${link}` : null,
   ].filter(Boolean).join('\n');

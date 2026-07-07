@@ -266,7 +266,7 @@ export function QuickMatchDialog() {
                             <SelectTrigger><SelectValue placeholder="Choose recipient..." /></SelectTrigger>
                             <SelectContent>
                                 <SelectGroup><SelectLabel>Contacts</SelectLabel>{contacts.map(c => <SelectItem key={c.id} value={c.id}>{c.name} ({c.phone})</SelectItem>)}</SelectGroup>
-                                <SelectGroup><SelectLabel>Partners</SelectLabel>{partners.map(p => <SelectItem key={p.id} value={p.id}>{p.name} ({p.companyName})</SelectItem>)}</SelectGroup>
+                                <SelectGroup><SelectLabel>Partners</SelectLabel>{partners.map(p => <SelectItem key={p.id} value={p.id}>{p.companyName ? `${p.name} (${p.companyName})` : p.name}</SelectItem>)}</SelectGroup>
                             </SelectContent>
                         </Select>
                     </div>

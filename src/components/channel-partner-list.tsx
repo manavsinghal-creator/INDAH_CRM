@@ -54,6 +54,10 @@ import { RefreshButton } from './refresh-button';
 
 type SortKey = keyof Pick<ChannelPartner, 'serialNumber' | 'name' | 'companyName' | 'city' | 'partnerType' | 'clienteleType' | 'investmentPreference'>;
 
+function partnerCompanyLabel(partner: ChannelPartner) {
+  return partner.companyName?.trim() || 'No company added';
+}
+
 export function ChannelPartnerList({ initialPartners }: { initialPartners: ChannelPartner[] }) {
   const [sortKey, setSortKey] = React.useState<SortKey>('serialNumber');
   const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('asc');
@@ -113,8 +117,8 @@ export function ChannelPartnerList({ initialPartners }: { initialPartners: Chann
       const query = searchQuery.toLowerCase();
       return (
         partner.name.toLowerCase().includes(query) ||
-        partner.companyName.toLowerCase().includes(query) ||
-        partner.email.toLowerCase().includes(query) ||
+        (partner.companyName || '').toLowerCase().includes(query) ||
+        (partner.email || '').toLowerCase().includes(query) ||
         partner.phone.includes(query) ||
         partner.city.toLowerCase().includes(query) ||
         partner.serialNumber.toLowerCase().includes(query) ||
@@ -127,8 +131,8 @@ export function ChannelPartnerList({ initialPartners }: { initialPartners: Chann
         aValue = parseInt(a.serialNumber.substring(2)); 
         bValue = parseInt(b.serialNumber.substring(2)); 
       } else { 
-        aValue = a[sortKey]; 
-        bValue = b[sortKey]; 
+        aValue = a[sortKey] || ''; 
+        bValue = b[sortKey] || ''; 
       }
       
       if (aValue === undefined) return 1;
@@ -173,7 +177,7 @@ export function ChannelPartnerList({ initialPartners }: { initialPartners: Chann
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <h3 className="font-semibold">{partner.name}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{partner.companyName}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{partnerCompanyLabel(partner)}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{partner.serialNumber}</p>
               </div>
               <Badge variant={partner.partnerType === 'Official' ? 'default' : 'secondary'}>{partner.partnerType}</Badge>
@@ -196,9 +200,11 @@ export function ChannelPartnerList({ initialPartners }: { initialPartners: Chann
               <Button variant="ghost" size="icon" onClick={() => handleView(partner)} aria-label={`View ${partner.name}`}>
                 <Eye className="h-4 w-4"/>
               </Button>
-              <Button variant="ghost" size="icon" asChild>
-                <a href={`mailto:${partner.email}`} aria-label={`Email ${partner.name}`}><Mail className="h-4 w-4" /></a>
-              </Button>
+              {partner.email && (
+                <Button variant="ghost" size="icon" asChild>
+                  <a href={`mailto:${partner.email}`} aria-label={`Email ${partner.name}`}><Mail className="h-4 w-4" /></a>
+                </Button>
+              )}
               <Button variant="ghost" size="icon" onClick={() => handleEdit(partner)} aria-label={`Edit ${partner.name}`}>
                 <Edit className="h-4 w-4" />
               </Button>
@@ -255,7 +261,7 @@ export function ChannelPartnerList({ initialPartners }: { initialPartners: Chann
                 <TableRow key={partner.id}>
                   <TableCell className="font-mono text-muted-foreground">{partner.serialNumber}</TableCell>
                   <TableCell className="font-medium">{partner.name}</TableCell>
-                  <TableCell>{partner.companyName}</TableCell>
+                  <TableCell>{partnerCompanyLabel(partner)}</TableCell>
                   <TableCell>{partner.city}</TableCell>
                   <TableCell><Badge variant={partner.partnerType === 'Official' ? 'default' : 'secondary'}>{partner.partnerType}</Badge></TableCell>
                   <TableCell><Badge variant="outline">{partner.clienteleType}</Badge></TableCell>
@@ -265,9 +271,11 @@ export function ChannelPartnerList({ initialPartners }: { initialPartners: Chann
                       <Button variant="ghost" size="icon" onClick={() => handleView(partner)} aria-label="View Partner">
                         <Eye className="h-4 w-4"/>
                       </Button>
-                      <Button variant="ghost" size="icon" asChild>
-                        <a href={`mailto:${partner.email}`} aria-label="Send email"><Mail className="h-4 w-4" /></a>
-                      </Button>
+                      {partner.email && (
+                        <Button variant="ghost" size="icon" asChild>
+                          <a href={`mailto:${partner.email}`} aria-label="Send email"><Mail className="h-4 w-4" /></a>
+                        </Button>
+                      )}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
