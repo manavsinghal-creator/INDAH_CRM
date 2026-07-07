@@ -24,6 +24,7 @@ import {
     updateDemoChannelPartner,
     updateDemoContact,
     updateDemoListing,
+    updateDemoSiteVisit,
 } from '@/lib/demo-data';
 import { requireAuthorizedUser } from '@/lib/auth-server';
 import { PRIMARY_ADMIN_EMAIL } from '@/lib/auth-config';
@@ -664,6 +665,124 @@ export async function addSiteVisit(formData: z.infer<typeof SiteVisitFormSchema>
     } catch (error) {
         console.error('Failed to add site visit', error);
         return { success: false, error: { _form: ['Failed to log site visit.'] } };
+    }
+}
+
+export async function updateSiteVisit(id: string, formData: z.infer<typeof SiteVisitFormSchema>): Promise<{ success: boolean; siteVisit?: SiteVisit; contact?: Contact; error?: any }> {
+    const user = await requireAuthorizedUser();
+    const result = SiteVisitFormSchema.safeParse(formData);
+    if (!result.success) return { success: false, error: result.error.flatten().fieldErrors };
+
+    const contacts = await getContacts();
+    const listings = await getListings();
+    const contact = contacts.find((item) => item.id === result.data.contactId);
+    if (!contact) return { success: false, error: { contactId: ['Selected contact was not found.'] } };
+
+    const selectedListings = result.data.listingIds
+        .map((listingId) => listings.find((listing) => listing.id === listingId))
+        .filter((listing): listing is Listing => Boolean(listing));
+
+    const listingLabels = selectedListings.map((listing) => listing.listingId
+        ? `${listing.listingId} - ${listing.listingName}`
+        : listing.listingName);
+    const uniqueListingIds = [...new Set(result.data.listingIds.filter(Boolean))];
+
+    if (!isCrmDatabaseConfigured) {
+        const siteVisit = updateDemoSiteVisit(id, result.data, contact.name, listingLabels);
+        if (!siteVisit) return { success: false, error: { _form: ['Demo site visit not found.'] } };
+        const updatedContact = uniqueListingIds.length
+            ? updateDemoContact(contact.id, {
+                ...contact,
+                offeredListings: [...new Set([...(contact.offeredListings || []), ...uniqueListingIds])],
+            }) || contact
+            : contact;
+        clearMatchCache();
+        revalidatePath('/');
+        revalidatePath('/site-visits');
+        revalidatePath('/activity');
+        return { success: true, siteVisit, contact: updatedContact };
+    }
+
+    try {
+        const siteVisitRef = doc(db, 'siteVisits', id);
+        const beforeSnapshot = await getDoc(siteVisitRef);
+        if (!beforeSnapshot.exists()) return { success: false, error: { _form: ['Site visit not found.'] } };
+        const beforeData = beforeSnapshot.data();
+
+        const updatedData = {
+            contactId: result.data.contactId,
+            contactName: contact.name,
+            listingIds: result.data.listingIds,
+            listingLabels,
+            visitAt: result.data.visitAt,
+            notes: result.data.notes || '',
+            updatedAt: serverTimestamp(),
+        };
+
+        await updateDoc(siteVisitRef, updatedData);
+
+        let savedContact: Contact | undefined;
+        if (uniqueListingIds.length) {
+            const contactRef = doc(db, 'contacts', contact.id);
+            const updatedOfferedListings = [...new Set([...(contact.offeredListings || []), ...uniqueListingIds])];
+            await updateDoc(contactRef, {
+                offeredListings: updatedOfferedListings,
+                updatedByName: user.name,
+                updatedByEmail: user.email,
+                updatedAt: serverTimestamp(),
+            });
+            const savedContactSnap = await getDoc(contactRef);
+            const savedContactData = savedContactSnap.data();
+            savedContact = savedContactData
+                ? {
+                    id: contact.id,
+                    ...savedContactData,
+                    createdAt: savedContactData.createdAt?.toDate().toISOString() || contact.createdAt,
+                    updatedAt: savedContactData.updatedAt?.toDate().toISOString() || new Date().toISOString(),
+                } as Contact
+                : undefined;
+        }
+
+        clearMatchCache();
+        revalidatePath('/');
+        revalidatePath('/site-visits');
+        revalidatePath('/activity');
+
+        const docSnap = await getDoc(siteVisitRef);
+        const savedData = docSnap.data();
+        await logActivity({
+            userEmail: user.email,
+            userName: user.name,
+            action: 'updated',
+            entityType: 'siteVisit',
+            entityId: id,
+            entityLabel: contact.name,
+            changes: getActivityChanges({
+                contactName: beforeData.contactName,
+                listingLabels: beforeData.listingLabels || [],
+                visitAt: beforeData.visitAt,
+                notes: beforeData.notes || '',
+            }, {
+                contactName: contact.name,
+                listingLabels,
+                visitAt: result.data.visitAt,
+                notes: result.data.notes || '',
+            }),
+        });
+
+        return {
+            success: true,
+            siteVisit: {
+                id,
+                ...savedData,
+                createdAt: savedData?.createdAt?.toDate().toISOString(),
+                updatedAt: savedData?.updatedAt?.toDate().toISOString(),
+            } as SiteVisit,
+            contact: savedContact,
+        };
+    } catch (error) {
+        console.error('Failed to update site visit', error);
+        return { success: false, error: { _form: ['Failed to update site visit.'] } };
     }
 }
 

@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { format, isSameDay, isThisWeek } from 'date-fns';
-import { CalendarClock, Eye, PlusCircle, Search } from 'lucide-react';
+import { CalendarClock, Eye, Pencil, PlusCircle, Search } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -51,6 +51,7 @@ export function SiteVisitList({
   const [filter, setFilter] = React.useState<VisitFilter>('all');
   const [isFormOpen, setFormOpen] = React.useState(false);
   const [selectedVisit, setSelectedVisit] = React.useState<SiteVisit | null>(null);
+  const [editingVisit, setEditingVisit] = React.useState<SiteVisit | null>(null);
 
   React.useEffect(() => {
     setSiteVisits(initialSiteVisits);
@@ -85,6 +86,19 @@ export function SiteVisitList({
 
   const handleSaved = (siteVisit: SiteVisit) => {
     setSiteVisits((current) => [siteVisit, ...current.filter((visit) => visit.id !== siteVisit.id)]);
+    setSelectedVisit((current) => current?.id === siteVisit.id ? siteVisit : current);
+    setEditingVisit(null);
+  };
+
+  const handleNewVisit = () => {
+    setEditingVisit(null);
+    setFormOpen(true);
+  };
+
+  const handleEditVisit = (visit: SiteVisit) => {
+    setSelectedVisit(null);
+    setEditingVisit(visit);
+    setFormOpen(true);
   };
 
   return (
@@ -117,7 +131,7 @@ export function SiteVisitList({
             <option value="week">This week</option>
           </select>
           <RefreshButton className="w-full lg:w-auto" />
-          <Button onClick={() => setFormOpen(true)} className="w-full shadow-sm lg:w-auto">
+          <Button onClick={handleNewVisit} className="w-full shadow-sm lg:w-auto">
             <PlusCircle className="mr-2 h-4 w-4" />
             Log Visit
           </Button>
@@ -158,10 +172,16 @@ export function SiteVisitList({
                   <p>{visit.createdByName || visit.createdByEmail || '—'}</p>
                 </div>
               </div>
-              <Button variant="outline" size="sm" className="mt-4 w-full" onClick={() => setSelectedVisit(visit)}>
-                <Eye className="mr-2 h-4 w-4" />
-                View Details
-              </Button>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <Button variant="outline" size="sm" onClick={() => setSelectedVisit(visit)}>
+                  <Eye className="mr-2 h-4 w-4" />
+                  View
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handleEditVisit(visit)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </Button>
+              </div>
             </article>
           ))}
         </div>
@@ -175,7 +195,7 @@ export function SiteVisitList({
                   <TableHead className="min-w-48">Contact</TableHead>
                   <TableHead className="min-w-72">Listings Shown</TableHead>
                   <TableHead className="min-w-44">Agent</TableHead>
-                  <TableHead className="min-w-28 text-right">Details</TableHead>
+                  <TableHead className="min-w-40 text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -193,10 +213,16 @@ export function SiteVisitList({
                       {visit.createdByEmail && <p className="text-xs text-muted-foreground">{visit.createdByEmail}</p>}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" onClick={() => setSelectedVisit(visit)}>
-                        <Eye className="mr-2 h-4 w-4" />
-                        View
-                      </Button>
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" onClick={() => setSelectedVisit(visit)}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          View
+                        </Button>
+                        <Button variant="ghost" onClick={() => handleEditVisit(visit)}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Edit
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -216,9 +242,13 @@ export function SiteVisitList({
 
       <SiteVisitFormDialog
         isOpen={isFormOpen}
-        onOpenChange={setFormOpen}
+        onOpenChange={(open) => {
+          setFormOpen(open);
+          if (!open) setEditingVisit(null);
+        }}
         contacts={contacts}
         listings={listings}
+        siteVisit={editingVisit}
         onSaved={handleSaved}
       />
 
@@ -261,6 +291,10 @@ export function SiteVisitList({
                 </div>
               </div>
               <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => handleEditVisit(selectedVisit)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit Visit
+                </Button>
                 <Button type="button" onClick={() => setSelectedVisit(null)}>Close</Button>
               </DialogFooter>
             </>

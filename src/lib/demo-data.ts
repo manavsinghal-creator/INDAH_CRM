@@ -390,6 +390,25 @@ export function addDemoSiteVisit(data: SiteVisitFormData, contactName: string, l
   return siteVisit;
 }
 
+export function updateDemoSiteVisit(id: string, data: SiteVisitFormData, contactName: string, listingLabels: string[]): SiteVisit | null {
+  const index = demoSiteVisits.findIndex((siteVisit) => siteVisit.id === id);
+  if (index === -1) return null;
+
+  const siteVisit: SiteVisit = {
+    ...demoSiteVisits[index],
+    contactName,
+    listingLabels,
+    contactId: data.contactId,
+    listingIds: data.listingIds,
+    visitAt: data.visitAt,
+    notes: data.notes,
+    updatedAt: new Date().toISOString(),
+  };
+
+  demoSiteVisits[index] = siteVisit;
+  return siteVisit;
+}
+
 export function addDemoListing(data: ListingFormData): Listing {
   const timestamp = new Date().toISOString();
   const listing: Listing = {
