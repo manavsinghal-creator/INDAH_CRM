@@ -24,7 +24,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
-import { MoreHorizontal, Edit, Trash2, Eye, Copy, ExternalLink, Link as LinkIcon, Check, Sparkles } from 'lucide-react';
+import { MoreHorizontal, Edit, Trash2, Eye, Copy, ExternalLink, Link as LinkIcon, Check, Sparkles, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { getListingAvailability, isListingAvailable } from '@/lib/crm-status';
@@ -38,6 +38,8 @@ interface ListingCardProps {
   onMatch: (listing: Listing) => void;
   onEdit: (listing: Listing) => void;
   onDuplicate: (listing: Listing) => void;
+  onExportInternalPdf: (listing: Listing) => void;
+  onExportExternalPdf: (listing: Listing) => void;
   onDelete: (id: string) => void;
 }
 
@@ -60,6 +62,8 @@ export function ListingCard({
     onMatch,
     onEdit,
     onDuplicate,
+    onExportInternalPdf,
+    onExportExternalPdf,
     onDelete,
 }: ListingCardProps) {
   const [isPending, startTransition] = React.useTransition();
@@ -114,6 +118,8 @@ export function ListingCard({
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => onEdit(listing)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onDuplicate(listing)}><Copy className="mr-2 h-4 w-4" /> Duplicate</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onExportInternalPdf(listing)}><FileText className="mr-2 h-4 w-4" /> Internal PDF</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onExportExternalPdf(listing)}><FileText className="mr-2 h-4 w-4" /> Client PDF</DropdownMenuItem>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive focus:bg-destructive/10 focus:text-destructive">
