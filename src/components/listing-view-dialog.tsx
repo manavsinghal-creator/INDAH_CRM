@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import type { Listing } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { Check, Copy, Minus, Sparkles, X } from 'lucide-react';
+import { Check, Copy, FileText, Minus, Sparkles, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { ContactMatchDialog } from './contact-match-dialog';
 import { getListingAvailability, isListingAvailable } from '@/lib/crm-status';
@@ -28,6 +28,8 @@ interface ListingViewDialogProps {
   onOpenChange: (isOpen: boolean) => void;
   listing: Listing;
   onDuplicate: (listing: Listing) => void;
+  onExportInternalPdf?: (listing: Listing) => void;
+  onExportExternalPdf?: (listing: Listing) => void;
 }
 
 const DetailItem: React.FC<{ label: string; value?: string | number | null; children?: React.ReactNode, className?: string }> = ({ label, value, children, className }) => {
@@ -70,7 +72,7 @@ const ListDetail: React.FC<{ label: string; items?: string[] | null; asBadges?: 
     );
 };
 
-export function ListingViewDialog({ isOpen, onOpenChange, listing, onDuplicate }: ListingViewDialogProps) {
+export function ListingViewDialog({ isOpen, onOpenChange, listing, onDuplicate, onExportInternalPdf, onExportExternalPdf }: ListingViewDialogProps) {
   const [isContactMatchOpen, setContactMatchOpen] = React.useState(false);
 
   const getWebsiteStatusVariant = (status: Listing['websiteStatus']) => {
@@ -228,6 +230,18 @@ export function ListingViewDialog({ isOpen, onOpenChange, listing, onDuplicate }
           </div>
         </ScrollArea>
         <DialogFooter>
+          {onExportInternalPdf && (
+            <Button type="button" variant="outline" onClick={() => onExportInternalPdf(listing)}>
+              <FileText className="mr-2 h-4 w-4" />
+              Internal PDF
+            </Button>
+          )}
+          {onExportExternalPdf && (
+            <Button type="button" variant="outline" onClick={() => onExportExternalPdf(listing)}>
+              <FileText className="mr-2 h-4 w-4" />
+              Client PDF
+            </Button>
+          )}
           <Button type="button" variant="outline" onClick={() => onDuplicate(listing)}>
             <Copy className="mr-2 h-4 w-4" />
             Duplicate

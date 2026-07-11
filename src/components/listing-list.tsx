@@ -33,6 +33,7 @@ import {
   MessageSquare,
   Search,
   Printer,
+  FileText,
   Copy,
   Check,
   ExternalLink,
@@ -68,6 +69,7 @@ import { getListingAvailability, isListingAvailable } from '@/lib/crm-status';
 import { ContactMatchDialog } from './contact-match-dialog';
 import { RefreshButton } from './refresh-button';
 import { formatListingPrice, getListingDisplayTitle } from '@/lib/listing-display';
+import { exportExternalListingPdf, exportInternalListingPdf } from '@/lib/listing-pdf';
 
 
 type SortKey = keyof Pick<Listing, 'listingId' | 'listingName' | 'projectName' | 'propertyType' | 'location' | 'bhkConfiguration' | 'carpetArea' | 'builtUpArea' | 'projectStatus' | 'availabilityStatus' | 'basePrice' | 'pricePerSqFt' | 'totalUnits' | 'availableUnits' | 'plotArea' | 'furnishing' | 'websiteStatus' | 'exclusiveMandate' | 'updatedAt' | 'externalPublicLink' | 'isActive'>;
@@ -127,6 +129,22 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
     setViewOpen(false);
     setEditingListing(listingToDuplicate as Listing);
     setFormOpen(true);
+  };
+
+  const handleExportInternalPdf = (listing: Listing) => {
+    exportInternalListingPdf(listing);
+    toast({
+      title: 'Internal PDF generated',
+      description: `${listing.listingId || listing.listingName} internal PDF has been downloaded.`,
+    });
+  };
+
+  const handleExportExternalPdf = (listing: Listing) => {
+    exportExternalListingPdf(listing);
+    toast({
+      title: 'Client PDF generated',
+      description: `${listing.listingId || listing.listingName} client PDF has been downloaded.`,
+    });
   };
 
   const handleAddNew = () => {
@@ -441,6 +459,8 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
                               <DropdownMenuContent align="end">
                                   <DropdownMenuItem onClick={() => handleEdit(listing)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => handleDuplicate(listing)}><Copy className="mr-2 h-4 w-4" /> Duplicate</DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleExportInternalPdf(listing)}><FileText className="mr-2 h-4 w-4" /> Internal PDF</DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleExportExternalPdf(listing)}><FileText className="mr-2 h-4 w-4" /> Client PDF</DropdownMenuItem>
                                   <AlertDialog>
                                   <AlertDialogTrigger asChild><DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive focus:bg-destructive/10 focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" />Delete</DropdownMenuItem></AlertDialogTrigger>
                                   <AlertDialogContent>
@@ -477,6 +497,8 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
                 onMatch={handleContactMatch}
                 onEdit={handleEdit}
                 onDuplicate={handleDuplicate}
+                onExportInternalPdf={handleExportInternalPdf}
+                onExportExternalPdf={handleExportExternalPdf}
                 onDelete={handleDelete}
               />
             ))}
@@ -484,7 +506,7 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
         )}
       
       <ListingForm isOpen={isFormOpen} onOpenChange={setFormOpen} listing={editingListing} />
-      {viewingListing && <ListingViewDialog isOpen={isViewOpen} onOpenChange={setViewOpen} listing={viewingListing} onDuplicate={handleDuplicate} />}
+      {viewingListing && <ListingViewDialog isOpen={isViewOpen} onOpenChange={setViewOpen} listing={viewingListing} onDuplicate={handleDuplicate} onExportInternalPdf={handleExportInternalPdf} onExportExternalPdf={handleExportExternalPdf} />}
       {matchingListing && <ContactMatchDialog isOpen={isContactMatchOpen} onOpenChange={setContactMatchOpen} listingId={matchingListing.id} />}
       <SendListingsDialog 
           isOpen={isSendDialogOpen} 
