@@ -52,6 +52,7 @@ function toMatchedListing({ listing, localScore, keyFitFactors }: RankedListing)
     priceOnRequest: listing.priceOnRequest || false,
     listingUrl: listing.listingUrl,
     externalPublicLink: listing.externalPublicLink,
+    heroImageUrl: listing.heroImageUrl,
     matchScore: localScore,
     matchReason: keyFitFactors.length
       ? keyFitFactors.join(', ')

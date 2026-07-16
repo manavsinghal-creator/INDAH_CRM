@@ -33,6 +33,8 @@ const entityLabels: Record<ActivityEntityType, string> = {
   channelPartner: 'Channel Partner',
   siteVisit: 'Site Visit',
   session: 'Login Session',
+  marketBenchmark: 'Market Benchmark',
+  quickShare: 'Quick WhatsApp share',
 };
 
 const actionLabels: Record<ActivityAction, string> = {

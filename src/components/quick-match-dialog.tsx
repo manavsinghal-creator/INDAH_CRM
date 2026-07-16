@@ -42,6 +42,9 @@ import { MatchSourceBadge } from './match-source-badge';
 import { ContactForm } from './contact-form';
 import { EmailDraftDialog } from './email-draft-dialog';
 import { formatListingPrice, getListingDisplayTitle } from '@/lib/listing-display';
+import { normalizeWhatsAppPhone } from '@/lib/whatsapp';
+import { ListingHeroImage } from './listing-hero-image';
+import { ListingViewDialog } from './listing-view-dialog';
 
 type MatchedListing = QuickPropertyMatcherOutput['matchedListings'][0];
 type FormData = z.infer<typeof QuickPropertyMatcherInputSchema>;
@@ -62,6 +65,8 @@ export function QuickMatchDialog() {
   const [isEmailOpen, setEmailOpen] = React.useState(false);
   const [isContactFormOpen, setContactFormOpen] = React.useState(false);
   const [updatePipeline, setUpdatePipeline] = React.useState(true);
+  const [quickPhone, setQuickPhone] = React.useState('');
+  const [viewingListing, setViewingListing] = React.useState<Listing | null>(null);
   
   const { toast } = useToast();
   
@@ -81,6 +86,8 @@ export function QuickMatchDialog() {
       setSelectedListings([]);
       setView('form');
       setSelectedRecipientId(null);
+      setQuickPhone('');
+      setViewingListing(null);
       setRecipientDataLoading(true);
       Promise.all([getContacts(), getChannelPartners(), getListings()])
         .then(([contactsData, partnersData, listingsData]) => {
@@ -132,6 +139,10 @@ export function QuickMatchDialog() {
   ];
   
   const selectedRecipient = allRecipients.find((recipient) => recipient.id === selectedRecipientId);
+  const quickShareRecipient = normalizeWhatsAppPhone(quickPhone)
+    ? { id: `quick-${normalizeWhatsAppPhone(quickPhone)}`, name: 'Quick WhatsApp share', messageName: 'there', phone: quickPhone, type: 'quickShare' as const }
+    : null;
+  const draftRecipient = selectedRecipient || quickShareRecipient;
   const selectedShareListings = React.useMemo(() => selectedListings.map((listing) => {
     const fullListing = allListings.find((item) => item.id === listing.recordId);
     return fullListing ? { ...fullListing, matchReason: listing.matchReason } : { ...listing, id: listing.recordId };
@@ -236,20 +247,35 @@ export function QuickMatchDialog() {
                            </div>
                            {matchData.matchedListings.map(listing => (
                                <div key={listing.recordId} className="flex items-start space-x-4">
+                                   {(() => {
+                                     const fullListing = allListings.find((item) => item.id === listing.recordId);
+                                     return (
+                                   <>
                                    <Checkbox checked={selectedListings.some(l => l.recordId === listing.recordId)} onCheckedChange={() => handleToggleListing(listing)} className="mt-1" />
                                    <Card className="flex-1">
                                        <CardHeader className="p-4">
-                                            <CardTitle className="text-base">{getListingDisplayTitle(listing)}</CardTitle>
-                                            <p className="text-xs font-mono text-muted-foreground">Listing ID: {listing.listingId || 'Not assigned'}</p>
-                                            <CardDescription>{listing.bhkConfiguration} {listing.propertyType} in {listing.location}</CardDescription>
-                                            <p className="text-sm font-semibold pt-1">{formatListingPrice(listing)}</p>
-                                            {listing.matchScore != null && (
-                                              <p className="text-xs text-muted-foreground">
-                                                {listing.matchScore}% match{listing.matchReason ? ` · ${listing.matchReason}` : ''}
-                                              </p>
-                                            )}
+                                            <div className="flex gap-3">
+                                              <ListingHeroImage src={listing.heroImageUrl} alt={`${getListingDisplayTitle(listing)} hero image`} />
+                                              <div className="min-w-0">
+                                                <CardTitle className="text-base">{getListingDisplayTitle(listing)}</CardTitle>
+                                                <p className="flex flex-wrap items-center gap-1 text-xs font-mono text-muted-foreground">
+                                                  Listing ID: {listing.listingId || 'Not assigned'}
+                                                  {fullListing && <button type="button" className="font-sans text-primary underline underline-offset-2" onClick={() => setViewingListing(fullListing)}>View listing</button>}
+                                                </p>
+                                                <CardDescription>{listing.bhkConfiguration} {listing.propertyType} in {listing.location}</CardDescription>
+                                                <p className="text-sm font-semibold pt-1">{formatListingPrice(listing)}</p>
+                                                {listing.matchScore != null && (
+                                                  <p className="text-xs text-muted-foreground">
+                                                    {listing.matchScore}% match{listing.matchReason ? ` · ${listing.matchReason}` : ''}
+                                                  </p>
+                                                )}
+                                              </div>
+                                            </div>
                                        </CardHeader>
                                    </Card>
+                                   </>
+                                     );
+                                   })()}
                                </div>
                            ))}
                            </>
@@ -275,6 +301,11 @@ export function QuickMatchDialog() {
                       Add New Contact
                     </Button>
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="quick-match-phone">Quick WhatsApp phone number</Label>
+                  <Input id="quick-match-phone" value={quickPhone} onChange={(event) => setQuickPhone(event.target.value)} inputMode="tel" placeholder="e.g. 9876543210" />
+                  <p className="text-xs text-muted-foreground">Use this to send selected listings without creating a contact.</p>
+                </div>
                 {selectedRecipient?.type === 'Contact' && (
                   <div className="flex items-center gap-2">
                     <Checkbox id="quick-match-update-pipeline" checked={updatePipeline} onCheckedChange={(checked) => setUpdatePipeline(checked === true)} />
@@ -288,7 +319,7 @@ export function QuickMatchDialog() {
                   <Mail className="mr-2 h-4 w-4" />
                   Email ({selectedListings.length})
                 </Button>
-                <Button onClick={() => setDraftOpen(true)} disabled={(!selectedRecipientId) || selectedListings.length === 0}>
+                <Button onClick={() => setDraftOpen(true)} disabled={!draftRecipient || selectedListings.length === 0}>
                   <MessageCircle className="mr-2 h-4 w-4" />
                   WhatsApp ({selectedListings.length})
                 </Button>
@@ -297,15 +328,16 @@ export function QuickMatchDialog() {
         )}
       </DialogContent>
     </Dialog>
-    {isDraftOpen && selectedRecipient && (
+    {isDraftOpen && draftRecipient && (
       <WhatsAppDraftDialog
         isOpen={isDraftOpen}
         onOpenChange={setDraftOpen}
         recipient={{
-          id: selectedRecipient.id,
-          name: selectedRecipient.name,
-          phone: selectedRecipient.phone,
-          type: selectedRecipient.type === 'Contact' ? 'contact' : 'channelPartner',
+          id: draftRecipient.id,
+          name: draftRecipient.name,
+          phone: draftRecipient.phone,
+          type: draftRecipient.type === 'Contact' ? 'contact' : draftRecipient.type === 'Channel Partner' ? 'channelPartner' : 'quickShare',
+          messageName: 'messageName' in draftRecipient ? draftRecipient.messageName : undefined,
         }}
         onOpened={handleShared}
         listings={selectedShareListings}
@@ -333,6 +365,14 @@ export function QuickMatchDialog() {
       initialValues={newContactInitialValues}
       onSaved={handleContactSaved}
       />
+    {viewingListing && (
+      <ListingViewDialog
+        isOpen={Boolean(viewingListing)}
+        onOpenChange={(open) => { if (!open) setViewingListing(null); }}
+        listing={viewingListing}
+        onDuplicate={() => {}}
+      />
+    )}
     </>
   );
 }

@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { db, isCrmDatabaseConfigured } from '@/lib/firebase';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, serverTimestamp, getDoc } from 'firebase/firestore';
 
-import { ActivityAction, ActivityChange, ActivityEntityType, ActivityLog, Contact, ContactFormSchema, Listing, ListingFormSchema, ChannelPartner, ChannelPartnerFormSchema, GenerateDescriptionInputSchema, QuickPropertyMatcherInputSchema, SiteVisit, SiteVisitFormSchema, budgetOptions, leadStageOptions, listingAvailabilityOptions, projectStatusOptions, propertyTypeOptions, type LeadStage } from '@/lib/types';
+import { ActivityAction, ActivityChange, ActivityEntityType, ActivityLog, Contact, ContactFormSchema, Listing, ListingFormSchema, ChannelPartner, ChannelPartnerFormSchema, GenerateDescriptionInputSchema, QuickPropertyMatcherInputSchema, SiteVisit, SiteVisitFormSchema, MarketBenchmark, MarketBenchmarkFormSchema, budgetOptions, leadStageOptions, listingAvailabilityOptions, projectStatusOptions, propertyTypeOptions, type LeadStage } from '@/lib/types';
 import { QuickPropertyMatcherOutput } from '@/lib/types';
 import {
     addDemoChannelPartner,
@@ -31,12 +31,14 @@ import { PRIMARY_ADMIN_EMAIL } from '@/lib/auth-config';
 import { findContactDuplicates } from '@/lib/contact-duplicates';
 import { getContactLeadStage, getListingAvailability, isListingAvailable } from '@/lib/crm-status';
 import { clearMatchCache } from '@/lib/ai-match-cache';
+import { buildMarketResearchData } from '@/lib/market-research';
 
 const contactsCollection = collection(db, 'contacts');
 const listingsCollection = collection(db, 'listings');
 const channelPartnersCollection = collection(db, 'channelPartners');
 const activityLogsCollection = collection(db, 'activityLogs');
 const siteVisitsCollection = collection(db, 'siteVisits');
+const marketBenchmarksCollection = collection(db, 'marketBenchmarks');
 
 function withLegacyContactOwnership(contact: Contact): Contact {
     return {
@@ -130,8 +132,12 @@ export async function getActivityLogs(): Promise<ActivityLog[]> {
                     ? 'Contact'
                     : data.entityType === 'channelPartner'
                         ? 'Channel Partner'
-                        : data.entityType === 'siteVisit'
-                            ? 'Site Visit'
+                : data.entityType === 'siteVisit'
+                    ? 'Site Visit'
+                    : data.entityType === 'marketBenchmark'
+                        ? 'Market Benchmark'
+                        : data.entityType === 'quickShare'
+                            ? 'Quick WhatsApp share'
                             : 'Login Session';
             return {
                 id: activityDoc.id,
@@ -156,7 +162,7 @@ export async function getActivityLogs(): Promise<ActivityLog[]> {
 const WhatsAppDraftActivitySchema = z.object({
     recipientId: z.string().min(1),
     recipientName: z.string().min(1),
-    recipientType: z.enum(['contact', 'channelPartner']),
+    recipientType: z.enum(['contact', 'channelPartner', 'quickShare']),
     phone: z.string().min(1),
     listingIds: z.array(z.string()),
     listingNames: z.array(z.string()),
@@ -1071,6 +1077,136 @@ export async function bulkAddContacts(contacts: any[]): Promise<{ success: boole
     } catch (error) {
         return { success: false, error: 'Failed to bulk add contacts.' };
     }
+}
+
+// MARKET RESEARCH ACTIONS
+export async function getMarketBenchmarks(): Promise<MarketBenchmark[]> {
+    await requireAuthorizedUser();
+    noStore();
+    if (!isCrmDatabaseConfigured) return [];
+
+    try {
+        const snapshot = await getDocs(marketBenchmarksCollection);
+        return snapshot.docs.map((benchmarkDoc) => {
+            const data = benchmarkDoc.data();
+            return {
+                id: benchmarkDoc.id,
+                ...data,
+                createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
+                updatedAt: data.updatedAt?.toDate().toISOString() || new Date().toISOString(),
+            } as MarketBenchmark;
+        }).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    } catch (error) {
+        console.error('Failed to load market benchmarks', error);
+        return [];
+    }
+}
+
+export async function saveMarketBenchmark(
+    id: string | undefined,
+    formData: z.infer<typeof MarketBenchmarkFormSchema>,
+): Promise<{ success: boolean; benchmark?: MarketBenchmark; error?: string }> {
+    const user = await requireAuthorizedUser();
+    const result = MarketBenchmarkFormSchema.safeParse(formData);
+    if (!result.success) return { success: false, error: 'Please complete the benchmark details.' };
+    if (!isCrmDatabaseConfigured) return { success: false, error: 'Market benchmarks need the CRM database connection.' };
+
+    try {
+        if (id) {
+            const benchmarkRef = doc(db, 'marketBenchmarks', id);
+            const beforeSnapshot = await getDoc(benchmarkRef);
+            if (!beforeSnapshot.exists()) return { success: false, error: 'Benchmark not found.' };
+            const beforeData = beforeSnapshot.data() || {};
+            await updateDoc(benchmarkRef, { ...result.data, updatedAt: serverTimestamp() });
+            const savedSnapshot = await getDoc(benchmarkRef);
+            const savedData = savedSnapshot.data();
+            await logActivity({
+                userEmail: user.email,
+                userName: user.name,
+                action: 'updated',
+                entityType: 'marketBenchmark',
+                entityId: id,
+                entityLabel: `${result.data.location} - ${result.data.propertyType} - ${result.data.bhkConfiguration}`,
+                changes: getActivityChanges(beforeData, result.data),
+            });
+            revalidatePath('/market-research');
+            return {
+                success: true,
+                benchmark: {
+                    id,
+                    ...savedData,
+                    createdAt: savedData?.createdAt?.toDate().toISOString() || new Date().toISOString(),
+                    updatedAt: savedData?.updatedAt?.toDate().toISOString() || new Date().toISOString(),
+                } as MarketBenchmark,
+            };
+        }
+
+        const benchmarkRef = await addDoc(marketBenchmarksCollection, {
+            ...result.data,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+        });
+        const savedSnapshot = await getDoc(benchmarkRef);
+        const savedData = savedSnapshot.data();
+        await logActivity({
+            userEmail: user.email,
+            userName: user.name,
+            action: 'created',
+            entityType: 'marketBenchmark',
+            entityId: benchmarkRef.id,
+            entityLabel: `${result.data.location} - ${result.data.propertyType} - ${result.data.bhkConfiguration}`,
+        });
+        revalidatePath('/market-research');
+        return {
+            success: true,
+            benchmark: {
+                id: benchmarkRef.id,
+                ...savedData,
+                createdAt: savedData?.createdAt?.toDate().toISOString() || new Date().toISOString(),
+                updatedAt: savedData?.updatedAt?.toDate().toISOString() || new Date().toISOString(),
+            } as MarketBenchmark,
+        };
+    } catch (error) {
+        console.error('Failed to save market benchmark', error);
+        return { success: false, error: 'Failed to save market benchmark.' };
+    }
+}
+
+export async function deleteMarketBenchmark(id: string): Promise<{ success: boolean; error?: string }> {
+    const user = await requireAuthorizedUser();
+    if (!isCrmDatabaseConfigured) return { success: false, error: 'Market benchmarks need the CRM database connection.' };
+
+    try {
+        const benchmarkRef = doc(db, 'marketBenchmarks', id);
+        const beforeSnapshot = await getDoc(benchmarkRef);
+        const beforeData = beforeSnapshot.data();
+        if (!beforeData) return { success: false, error: 'Benchmark not found.' };
+        await deleteDoc(benchmarkRef);
+        await logActivity({
+            userEmail: user.email,
+            userName: user.name,
+            action: 'deleted',
+            entityType: 'marketBenchmark',
+            entityId: id,
+            entityLabel: `${beforeData.location || 'Market'} - ${beforeData.propertyType || 'All'} - ${beforeData.bhkConfiguration || 'All'}`,
+        });
+        revalidatePath('/market-research');
+        return { success: true };
+    } catch (error) {
+        console.error('Failed to delete market benchmark', error);
+        return { success: false, error: 'Failed to delete market benchmark.' };
+    }
+}
+
+export async function getMarketResearchData() {
+    await requireAuthorizedUser();
+    noStore();
+    const [listings, contacts, benchmarks] = await Promise.all([
+        getListings(),
+        getContacts(),
+        getMarketBenchmarks(),
+    ]);
+    return buildMarketResearchData(listings, contacts, benchmarks);
 }
 
 export async function getDashboardMetrics() {

@@ -40,6 +40,8 @@ import {
   List,
   LayoutGrid,
   Sparkles,
+  Filter,
+  X,
 } from 'lucide-react';
 import { deleteListing } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
@@ -70,10 +72,16 @@ import { ContactMatchDialog } from './contact-match-dialog';
 import { RefreshButton } from './refresh-button';
 import { formatListingPrice, getListingDisplayTitle } from '@/lib/listing-display';
 import { exportExternalListingPdf, exportInternalListingPdf } from '@/lib/listing-pdf';
+import { ListingHeroImage } from './listing-hero-image';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 
 type SortKey = keyof Pick<Listing, 'listingId' | 'listingName' | 'projectName' | 'propertyType' | 'location' | 'bhkConfiguration' | 'carpetArea' | 'builtUpArea' | 'projectStatus' | 'availabilityStatus' | 'basePrice' | 'pricePerSqFt' | 'totalUnits' | 'availableUnits' | 'plotArea' | 'furnishing' | 'websiteStatus' | 'exclusiveMandate' | 'updatedAt' | 'externalPublicLink' | 'isActive'>;
 type ViewMode = 'list' | 'grid';
+type WebsiteFilter = 'All' | 'Uploaded' | 'Not uploaded' | 'Approved';
+type ExclusiveFilter = 'All' | 'Exclusive' | 'Non-exclusive';
+type ListingTypeFilter = 'All' | 'Public' | 'Private';
+type PriceModeFilter = 'All' | 'Price set' | 'Price on request';
 
 function ListingListContent({ initialListings }: { initialListings: Listing[] }) {
   const [selectedListings, setSelectedListings] = React.useState<string[]>([]);
@@ -81,6 +89,17 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
   const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('desc');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [availabilityFilter, setAvailabilityFilter] = React.useState<'All' | ListingAvailability>('All');
+  const [websiteFilter, setWebsiteFilter] = React.useState<WebsiteFilter>('All');
+  const [exclusiveFilter, setExclusiveFilter] = React.useState<ExclusiveFilter>('All');
+  const [listingTypeFilter, setListingTypeFilter] = React.useState<ListingTypeFilter>('All');
+  const [locationFilter, setLocationFilter] = React.useState('All');
+  const [propertyTypeFilter, setPropertyTypeFilter] = React.useState('All');
+  const [bhkFilter, setBhkFilter] = React.useState('All');
+  const [projectStatusFilter, setProjectStatusFilter] = React.useState('All');
+  const [priceModeFilter, setPriceModeFilter] = React.useState<PriceModeFilter>('All');
+  const [minPriceFilter, setMinPriceFilter] = React.useState('');
+  const [maxPriceFilter, setMaxPriceFilter] = React.useState('');
+  const [showMoreFilters, setShowMoreFilters] = React.useState(false);
   const [isFormOpen, setFormOpen] = React.useState(false);
   const [isViewOpen, setViewOpen] = React.useState(false);
   const [isSendDialogOpen, setSendDialogOpen] = React.useState(false);
@@ -131,20 +150,28 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
     setFormOpen(true);
   };
 
-  const handleExportInternalPdf = (listing: Listing) => {
-    exportInternalListingPdf(listing);
-    toast({
-      title: 'Internal PDF generated',
-      description: `${listing.listingId || listing.listingName} internal PDF has been downloaded.`,
-    });
+  const handleExportInternalPdf = async (listing: Listing) => {
+    try {
+      await exportInternalListingPdf(listing);
+      toast({
+        title: 'Internal PDF generated',
+        description: `${listing.listingId || listing.listingName} internal PDF has been downloaded.`,
+      });
+    } catch {
+      toast({ title: 'PDF could not be generated', description: 'Please try again.', variant: 'destructive' });
+    }
   };
 
-  const handleExportExternalPdf = (listing: Listing) => {
-    exportExternalListingPdf(listing);
-    toast({
-      title: 'Client PDF generated',
-      description: `${listing.listingId || listing.listingName} client PDF has been downloaded.`,
-    });
+  const handleExportExternalPdf = async (listing: Listing) => {
+    try {
+      await exportExternalListingPdf(listing);
+      toast({
+        title: 'Client PDF generated',
+        description: `${listing.listingId || listing.listingName} client PDF has been downloaded.`,
+      });
+    } catch {
+      toast({ title: 'PDF could not be generated', description: 'Please try again.', variant: 'destructive' });
+    }
   };
 
   const handleAddNew = () => {
@@ -180,7 +207,48 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
     }
   };
   
+  const filterOptions = React.useMemo(() => {
+    const uniqueValues = (getValue: (listing: Listing) => string | undefined) => (
+      Array.from(new Set(initialListings.map(getValue).filter((value): value is string => Boolean(value)))).sort((a, b) => a.localeCompare(b))
+    );
+    return {
+      locations: uniqueValues((listing) => listing.location),
+      propertyTypes: uniqueValues((listing) => listing.propertyType),
+      bhkConfigurations: uniqueValues((listing) => listing.bhkConfiguration),
+      projectStatuses: uniqueValues((listing) => listing.projectStatus),
+    };
+  }, [initialListings]);
+
+  const hasAdvancedFilters = websiteFilter !== 'All'
+    || exclusiveFilter !== 'All'
+    || listingTypeFilter !== 'All'
+    || locationFilter !== 'All'
+    || propertyTypeFilter !== 'All'
+    || bhkFilter !== 'All'
+    || projectStatusFilter !== 'All'
+    || priceModeFilter !== 'All'
+    || Boolean(minPriceFilter)
+    || Boolean(maxPriceFilter);
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setAvailabilityFilter('All');
+    setWebsiteFilter('All');
+    setExclusiveFilter('All');
+    setListingTypeFilter('All');
+    setLocationFilter('All');
+    setPropertyTypeFilter('All');
+    setBhkFilter('All');
+    setProjectStatusFilter('All');
+    setPriceModeFilter('All');
+    setMinPriceFilter('');
+    setMaxPriceFilter('');
+    setShowMoreFilters(false);
+  };
+
   const sortedListings = React.useMemo(() => {
+    const minPrice = Number(minPriceFilter);
+    const maxPrice = Number(maxPriceFilter);
     return [...initialListings].filter(listing => {
         const query = searchQuery.toLowerCase();
         const matchesSearch = (
@@ -202,7 +270,37 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
             String(listing.pricePerSqFt).includes(query) ||
             String(listing.availableUnits).includes(query)
         );
-        return matchesSearch && (availabilityFilter === 'All' || getListingAvailability(listing) === availabilityFilter);
+        const matchesAvailability = availabilityFilter === 'All' || getListingAvailability(listing) === availabilityFilter;
+        const matchesWebsite = websiteFilter === 'All'
+          || (websiteFilter === 'Uploaded' && listing.websiteStatus === 'Uploaded on website')
+          || (websiteFilter === 'Not uploaded' && listing.websiteStatus !== 'Uploaded on website')
+          || (websiteFilter === 'Approved' && listing.websiteStatus === 'Approved for website upload');
+        const matchesExclusive = exclusiveFilter === 'All'
+          || (exclusiveFilter === 'Exclusive' && listing.exclusiveMandate === true)
+          || (exclusiveFilter === 'Non-exclusive' && listing.exclusiveMandate !== true);
+        const matchesListingType = listingTypeFilter === 'All' || (listing.listingType || 'Public') === listingTypeFilter;
+        const matchesLocation = locationFilter === 'All' || listing.location === locationFilter;
+        const matchesPropertyType = propertyTypeFilter === 'All' || listing.propertyType === propertyTypeFilter;
+        const matchesBhk = bhkFilter === 'All' || listing.bhkConfiguration === bhkFilter;
+        const matchesProjectStatus = projectStatusFilter === 'All' || listing.projectStatus === projectStatusFilter;
+        const matchesPriceMode = priceModeFilter === 'All'
+          || (priceModeFilter === 'Price on request' && listing.priceOnRequest === true)
+          || (priceModeFilter === 'Price set' && listing.priceOnRequest !== true);
+        const matchesMinPrice = !minPriceFilter || (Number.isFinite(minPrice) && !listing.priceOnRequest && listing.basePrice >= minPrice);
+        const matchesMaxPrice = !maxPriceFilter || (Number.isFinite(maxPrice) && !listing.priceOnRequest && listing.basePrice <= maxPrice);
+
+        return matchesSearch
+          && matchesAvailability
+          && matchesWebsite
+          && matchesExclusive
+          && matchesListingType
+          && matchesLocation
+          && matchesPropertyType
+          && matchesBhk
+          && matchesProjectStatus
+          && matchesPriceMode
+          && matchesMinPrice
+          && matchesMaxPrice;
     }).sort((a, b) => {
       let aValue: any, bValue: any;
 
@@ -236,7 +334,7 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
       if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [availabilityFilter, initialListings, sortKey, sortOrder, searchQuery]);
+  }, [availabilityFilter, bhkFilter, exclusiveFilter, initialListings, listingTypeFilter, locationFilter, maxPriceFilter, minPriceFilter, priceModeFilter, projectStatusFilter, propertyTypeFilter, searchQuery, sortKey, sortOrder, websiteFilter]);
   const selectableListings = React.useMemo(() => sortedListings.filter(isListingAvailable), [sortedListings]);
   const availabilityCounts = React.useMemo(() => {
     const counts = Object.fromEntries(listingAvailabilityOptions.map((status) => [status, 0])) as Record<ListingAvailability, number>;
@@ -322,16 +420,105 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
             </div>
         </div>
 
-        <section aria-label="Listing availability" className="border-y bg-muted/20 py-3 print-hidden">
-          <div className="flex gap-2 overflow-x-auto px-1 pb-1">
-            <Button type="button" size="sm" variant={availabilityFilter === 'All' ? 'default' : 'outline'} onClick={() => setAvailabilityFilter('All')} className="shrink-0">
-              All Listings <Badge variant="secondary" className="ml-2">{initialListings.length}</Badge>
-            </Button>
-            {listingAvailabilityOptions.map((status) => (
-              <Button key={status} type="button" size="sm" variant={availabilityFilter === status ? 'default' : 'outline'} onClick={() => setAvailabilityFilter(status)} className="shrink-0">
-                {status} <Badge variant="secondary" className="ml-2">{availabilityCounts[status]}</Badge>
+        <section aria-label="Listing filters" className="rounded-lg border-2 border-border bg-card px-3 py-4 shadow-sm sm:px-4 print-hidden">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="mr-1 flex items-center gap-2 rounded-md border bg-muted px-3 py-2 text-sm font-semibold text-foreground"><Filter className="h-4 w-4 text-primary" /> Availability</span>
+              <Button type="button" size="sm" variant={availabilityFilter === 'All' ? 'default' : 'outline'} onClick={() => setAvailabilityFilter('All')} className="shrink-0">
+                All <Badge variant="secondary" className="ml-2">{initialListings.length}</Badge>
               </Button>
-            ))}
+              {listingAvailabilityOptions.map((status) => (
+                <Button key={status} type="button" size="sm" variant={availabilityFilter === status ? 'default' : 'outline'} onClick={() => setAvailabilityFilter(status)} className="shrink-0">
+                  {status} <Badge variant="secondary" className="ml-2">{availabilityCounts[status]}</Badge>
+                </Button>
+              ))}
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+              <Select value={locationFilter} onValueChange={setLocationFilter}>
+                <SelectTrigger aria-label="Filter listings by location"><SelectValue placeholder="All locations" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All locations</SelectItem>
+                  {filterOptions.locations.map((location) => <SelectItem key={location} value={location}>{location}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={propertyTypeFilter} onValueChange={setPropertyTypeFilter}>
+                <SelectTrigger aria-label="Filter listings by property type"><SelectValue placeholder="All property types" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All property types</SelectItem>
+                  {filterOptions.propertyTypes.map((propertyType) => <SelectItem key={propertyType} value={propertyType}>{propertyType}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={bhkFilter} onValueChange={setBhkFilter}>
+                <SelectTrigger aria-label="Filter listings by BHK"><SelectValue placeholder="All BHK configurations" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All BHK configurations</SelectItem>
+                  {filterOptions.bhkConfigurations.map((bhk) => <SelectItem key={bhk} value={bhk}>{bhk}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={websiteFilter} onValueChange={(value) => setWebsiteFilter(value as WebsiteFilter)}>
+                <SelectTrigger aria-label="Filter listings by website status"><SelectValue placeholder="Website status" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All website statuses</SelectItem>
+                  <SelectItem value="Uploaded">Uploaded to website</SelectItem>
+                  <SelectItem value="Not uploaded">Not uploaded to website</SelectItem>
+                  <SelectItem value="Approved">Approved for website</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button type="button" variant="outline" onClick={() => setShowMoreFilters((current) => !current)} className="justify-between">
+                More filters
+                <Badge variant="secondary" className="ml-2">{hasAdvancedFilters ? 'On' : 'Optional'}</Badge>
+              </Button>
+            </div>
+
+            {showMoreFilters && (
+              <div className="grid gap-2 border-t pt-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+                <Select value={exclusiveFilter} onValueChange={(value) => setExclusiveFilter(value as ExclusiveFilter)}>
+                  <SelectTrigger aria-label="Filter listings by exclusivity"><SelectValue placeholder="All mandates" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All mandates</SelectItem>
+                    <SelectItem value="Exclusive">Exclusive only</SelectItem>
+                    <SelectItem value="Non-exclusive">Non-exclusive only</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={listingTypeFilter} onValueChange={(value) => setListingTypeFilter(value as ListingTypeFilter)}>
+                  <SelectTrigger aria-label="Filter listings by visibility"><SelectValue placeholder="Public and private" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">Public and private</SelectItem>
+                    <SelectItem value="Public">Public listings</SelectItem>
+                    <SelectItem value="Private">Private listings</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={projectStatusFilter} onValueChange={setProjectStatusFilter}>
+                  <SelectTrigger aria-label="Filter listings by project status"><SelectValue placeholder="All project stages" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All project stages</SelectItem>
+                    {filterOptions.projectStatuses.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={priceModeFilter} onValueChange={(value) => setPriceModeFilter(value as PriceModeFilter)}>
+                  <SelectTrigger aria-label="Filter listings by price availability"><SelectValue placeholder="All pricing" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All pricing</SelectItem>
+                    <SelectItem value="Price set">Price set</SelectItem>
+                    <SelectItem value="Price on request">Price on request</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input type="number" min="0" step="0.01" value={minPriceFilter} onChange={(event) => setMinPriceFilter(event.target.value)} placeholder="Min price (Cr)" aria-label="Minimum price in crores" />
+                  <Input type="number" min="0" step="0.01" value={maxPriceFilter} onChange={(event) => setMaxPriceFilter(event.target.value)} placeholder="Max price (Cr)" aria-label="Maximum price in crores" />
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+              <span>{sortedListings.length} {sortedListings.length === 1 ? 'listing' : 'listings'} shown</span>
+              {(searchQuery || availabilityFilter !== 'All' || hasAdvancedFilters) && (
+                <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
+                  <X className="mr-1 h-4 w-4" /> Clear filters
+                </Button>
+              )}
+            </div>
           </div>
         </section>
 
@@ -348,6 +535,7 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
                           aria-label="Select all"
                           />
                     </TableHead>
+                    <TableHead className="sticky top-0 bg-card w-20">Image</TableHead>
                     <TableHead onClick={() => handleSort('listingId')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Listing ID {getSortIcon('listingId')}</div></TableHead>
                     <TableHead onClick={() => handleSort('listingName')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Listing Name {getSortIcon('listingName')}</div></TableHead>
                     <TableHead onClick={() => handleSort('availabilityStatus')} className="sticky top-0 bg-card cursor-pointer hover:bg-muted/50 transition-colors"><div className="flex items-center">Availability {getSortIcon('availabilityStatus')}</div></TableHead>
@@ -374,6 +562,7 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
                       Array.from({ length: 10 }).map((_, i) => (
                           <TableRow key={i}>
                               <TableCell className="w-12"><Skeleton className="h-5 w-5"/></TableCell>
+                              <TableCell><Skeleton className="h-12 w-16"/></TableCell>
                               <TableCell><Skeleton className="h-5 w-16"/></TableCell>
                               <TableCell><Skeleton className="h-5 w-32"/></TableCell>
                               <TableCell><Skeleton className="h-5 w-32"/></TableCell>
@@ -395,7 +584,13 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
                           </TableRow>
                       ))
                   ) : (
-                      sortedListings.map(listing => {
+                      sortedListings.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={21} className="py-12 text-center text-muted-foreground">
+                            No listings match these filters.
+                          </TableCell>
+                        </TableRow>
+                      ) : sortedListings.map(listing => {
                       const statusInfo = getWebsiteStatusInfo(listing.websiteStatus);
                       return (
                       <TableRow key={listing.id} data-state={selectedListings.includes(listing.id) ? "selected" : ""} className={cn(!isListingAvailable(listing) && 'bg-muted/50 text-muted-foreground')}>
@@ -407,6 +602,7 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
                                 disabled={!isListingAvailable(listing)}
                             />
                           </TableCell>
+                          <TableCell><ListingHeroImage src={listing.heroImageUrl} alt={`${getListingDisplayTitle(listing)} hero image`} /></TableCell>
                           <TableCell className="font-mono text-muted-foreground">{listing.listingId}</TableCell>
                           <TableCell className="font-medium">{getListingDisplayTitle(listing)}</TableCell>
                           <TableCell><Badge variant={isListingAvailable(listing) ? 'default' : 'outline'}>{getListingAvailability(listing)}</Badge></TableCell>
@@ -486,8 +682,13 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {sortedListings.map(listing => (
+          sortedListings.length === 0 ? (
+            <div className="border py-12 text-center text-sm text-muted-foreground">
+              No listings match these filters.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+              {sortedListings.map(listing => (
               <ListingCard 
                 key={listing.id}
                 listing={listing}
@@ -501,8 +702,9 @@ function ListingListContent({ initialListings }: { initialListings: Listing[] })
                 onExportExternalPdf={handleExportExternalPdf}
                 onDelete={handleDelete}
               />
-            ))}
-          </div>
+              ))}
+            </div>
+          )
         )}
       
       <ListingForm isOpen={isFormOpen} onOpenChange={setFormOpen} listing={editingListing} />

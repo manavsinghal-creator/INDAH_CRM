@@ -29,6 +29,7 @@ import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { getListingAvailability, isListingAvailable } from '@/lib/crm-status';
 import { formatListingPrice, getListingDisplayTitle } from '@/lib/listing-display';
+import { ListingHeroImage } from './listing-hero-image';
 
 interface ListingCardProps {
   listing: Listing;
@@ -85,6 +86,7 @@ export function ListingCard({
 
   return (
     <Card className={cn("flex flex-col", !isAvailable && "bg-muted/50 text-muted-foreground")}>
+      <ListingHeroImage src={listing.heroImageUrl} alt={`${getListingDisplayTitle(listing)} hero image`} size="card" className="rounded-b-none border-x-0 border-t-0" />
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <Checkbox

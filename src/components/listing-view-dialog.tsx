@@ -22,6 +22,7 @@ import { format } from 'date-fns';
 import { ContactMatchDialog } from './contact-match-dialog';
 import { getListingAvailability, isListingAvailable } from '@/lib/crm-status';
 import { formatListingPrice, getListingDisplayTitle } from '@/lib/listing-display';
+import { ListingHeroImage } from './listing-hero-image';
 
 interface ListingViewDialogProps {
   isOpen: boolean;
@@ -101,6 +102,7 @@ export function ListingViewDialog({ isOpen, onOpenChange, listing, onDuplicate, 
         </DialogHeader>
         <ScrollArea className="max-h-[80vh] pr-6 -mr-2">
           <div className="space-y-6 py-4">
+             <ListingHeroImage src={listing.heroImageUrl} alt={`${getListingDisplayTitle(listing)} hero image`} size="detail" />
 
              <Card>
                 <CardHeader><CardTitle>Description</CardTitle></CardHeader>

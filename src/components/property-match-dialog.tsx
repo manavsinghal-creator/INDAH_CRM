@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import type { Contact, Listing, MatchMetadata } from '@/lib/types';
 import type { PropertyMatcherOutput } from '@/ai/flows/property-matcher';
 import { useToast } from '@/hooks/use-toast';
-import { Sparkles, Copy, Check, Mail, MessageCircle, Eye } from 'lucide-react';
+import { Sparkles, Copy, Check, Mail, MessageCircle } from 'lucide-react';
 import { Skeleton } from './ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -26,6 +26,7 @@ import { Label } from './ui/label';
 import { EmailDraftDialog } from './email-draft-dialog';
 import { markContactPropertiesShared } from '@/app/actions';
 import { ListingViewDialog } from './listing-view-dialog';
+import { ListingHeroImage } from './listing-hero-image';
 
 type SuggestedProperty = PropertyMatcherOutput['suggestedProperties'][number];
 
@@ -211,9 +212,13 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
                                                     checked={selectedIds.includes(property.id)}
                                                     onCheckedChange={() => handleToggleProperty(property.id)}
                                                   />
-                                                  <div>
+                                                  {matchedListing && <ListingHeroImage src={matchedListing.heroImageUrl} alt={`${property.name} hero image`} />}
+                                                  <div className="min-w-0">
                                                     <CardTitle className="text-base text-slate-900 font-semibold">{property.name}</CardTitle>
-                                                    <CardDescription className="text-xs font-mono">Listing ID: {property.listingId || 'Not assigned'}</CardDescription>
+                                                    <CardDescription className="flex flex-wrap items-center gap-1 text-xs font-mono">
+                                                      Listing ID: {property.listingId || 'Not assigned'}
+                                                      {matchedListing && <button type="button" className="font-sans text-primary underline underline-offset-2" onClick={() => setViewingListing(matchedListing)}>View listing</button>}
+                                                    </CardDescription>
                                                   </div>
                                                 </div>
                                                 {property.matchScore != null && (
@@ -226,12 +231,6 @@ export function PropertyMatchDialog({ isOpen, onOpenChange, contact, allListings
                                                     }`}>
                                                         {property.matchScore}% Match
                                                     </Badge>
-                                                )}
-                                                {matchedListing && (
-                                                  <Button type="button" size="sm" variant="outline" onClick={() => setViewingListing(matchedListing)}>
-                                                    <Eye className="mr-2 h-4 w-4" />
-                                                    View
-                                                  </Button>
                                                 )}
                                             </div>
                                         </CardHeader>
