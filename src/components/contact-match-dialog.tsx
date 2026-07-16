@@ -25,6 +25,8 @@ import Link from 'next/link';
 import { Badge } from './ui/badge';
 import { WhatsAppDraftDialog } from './whatsapp-draft-dialog';
 import { MatchSourceBadge } from './match-source-badge';
+import { ListingHeroImage } from './listing-hero-image';
+import { ListingViewDialog } from './listing-view-dialog';
 
 
 interface ContactMatchDialogProps {
@@ -38,6 +40,7 @@ export function ContactMatchDialog({ isOpen, onOpenChange, listingId }: ContactM
   const [isMatching, startTransition] = React.useTransition();
   const [matchData, setMatchData] = React.useState<ContactMatcherOutput | null>(null);
   const [draftRecipient, setDraftRecipient] = React.useState<ContactMatcherOutput['matchedContacts'][number] | null>(null);
+  const [isListingViewOpen, setListingViewOpen] = React.useState(false);
   const { toast } = useToast();
 
   const handleMatch = React.useCallback(async (id: string) => {
@@ -89,16 +92,20 @@ export function ContactMatchDialog({ isOpen, onOpenChange, listingId }: ContactM
         <DialogHeader>
           <DialogTitle>AI Contact Matcher</DialogTitle>
           {listing ? (
-             <DialogDescription>
-                Finding the best buyers for {listing.listingName}.
-                {matchData && (
-                    <span className="flex items-center gap-2 mt-2">
-                        <Users className="h-4 w-4" />
-                        {matchCount} {matchCount === 1 ? 'match found' : 'matches found'}.
-                        <MatchSourceBadge metadata={matchData.matchMetadata} />
+             <div className="flex flex-wrap items-center gap-2">
+                <ListingHeroImage src={listing.heroImageUrl} alt={`${listing.listingName} hero image`} />
+                <DialogDescription className="flex-1">
+                  Finding the best buyers for {listing.listingName}. Listing ID: {listing.listingId || 'Not assigned'}{' '}
+                  <button type="button" className="text-primary underline underline-offset-2" onClick={() => setListingViewOpen(true)}>View listing</button>
+                  {matchData && (
+                    <span className="mt-2 flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      {matchCount} {matchCount === 1 ? 'match found' : 'matches found'}.
+                      <MatchSourceBadge metadata={matchData.matchMetadata} />
                     </span>
-                )}
-             </DialogDescription>
+                  )}
+                </DialogDescription>
+             </div>
           ) : (
              <DialogDescription>
                 Loading listing details and finding matches...
@@ -221,6 +228,14 @@ export function ContactMatchDialog({ isOpen, onOpenChange, listingId }: ContactM
           type: 'contact',
         }}
         listings={[{ ...listing, matchReason: draftRecipient.matchReason }]}
+      />
+    )}
+    {listing && isListingViewOpen && (
+      <ListingViewDialog
+        isOpen={isListingViewOpen}
+        onOpenChange={setListingViewOpen}
+        listing={listing}
+        onDuplicate={() => {}}
       />
     )}
     </>

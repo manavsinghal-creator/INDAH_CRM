@@ -117,6 +117,29 @@ export type ListingAvailability = typeof listingAvailabilityOptions[number];
 export const listingTypeOptions = ["Public", "Private"] as const;
 export type ListingType = typeof listingTypeOptions[number];
 
+export const marketBenchmarkPropertyTypeOptions = ["All", "Apartment", "Villa", "Plot", "Commercial"] as const;
+export const marketBenchmarkBhkOptions = ["All", ...bhkOptions] as const;
+
+export const MarketBenchmarkSchema = z.object({
+  id: z.string(),
+  location: z.string().min(2, "Location is required."),
+  propertyType: z.enum(marketBenchmarkPropertyTypeOptions),
+  bhkConfiguration: z.enum(marketBenchmarkBhkOptions),
+  pricePerSqFt: z.coerce.number().positive("Price per sq. ft. must be greater than zero."),
+  source: z.string().min(2, "Source is required."),
+  notes: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type MarketBenchmark = z.infer<typeof MarketBenchmarkSchema>;
+
+export const MarketBenchmarkFormSchema = MarketBenchmarkSchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type MarketBenchmarkFormData = z.infer<typeof MarketBenchmarkFormSchema>;
+
 export const uspTagOptions = [
   "mediterranean",
   "walk to beach",
@@ -161,6 +184,7 @@ export const uspTagOptions = [
 export const ListingSchema = z.object({
   id: z.string(),
   listingId: z.string().optional(),
+  heroImageUrl: z.string().url().optional().or(z.literal('')),
   listingName: z.string().min(1, "Listing Name is required."),
   projectName: z.string().min(1, "Project Name is required."),
   titleProjectName: z.string().optional(),
@@ -268,7 +292,7 @@ export const ChannelPartnerFormSchema = ChannelPartnerSchema.omit({ id: true, se
 export type ChannelPartnerFormData = z.infer<typeof ChannelPartnerFormSchema>;
 
 export type ActivityAction = 'created' | 'updated' | 'deleted' | 'whatsappDraftOpened' | 'emailDraftOpened' | 'siteVisitLogged' | 'signedIn';
-export type ActivityEntityType = 'contact' | 'listing' | 'channelPartner' | 'siteVisit' | 'session';
+export type ActivityEntityType = 'contact' | 'listing' | 'channelPartner' | 'siteVisit' | 'session' | 'marketBenchmark' | 'quickShare';
 
 export type ActivityChange = {
   field: string;
@@ -369,6 +393,7 @@ export const QuickPropertyMatcherOutputSchema = z.object({
       priceOnRequest: z.boolean().optional(),
       listingUrl: z.string().optional(),
       externalPublicLink: z.string().optional(),
+      heroImageUrl: z.string().url().optional().or(z.literal('')),
       matchScore: z.number().optional(),
       matchReason: z.string().optional(),
     })

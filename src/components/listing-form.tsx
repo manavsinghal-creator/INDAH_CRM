@@ -57,6 +57,8 @@ import { Label } from './ui/label';
 import { useRouter } from 'next/navigation';
 import { Sparkles } from 'lucide-react';
 import { getListingAvailability } from '@/lib/crm-status';
+import { ListingPdfImport } from './listing-pdf-import';
+import { ListingHeroImageUpload } from './listing-hero-image';
 
 interface ListingFormProps {
   isOpen: boolean;
@@ -66,6 +68,7 @@ interface ListingFormProps {
 
 const defaultValues: ListingFormData = {
     listingId: '',
+    heroImageUrl: '',
     listingName: '',
     projectName: '',
     titleProjectName: '',
@@ -124,7 +127,7 @@ const defaultValues: ListingFormData = {
 
 const taxesOptions = ["GST", "Stamp Duty", "Registration"];
 const amenitiesOptions = [ "Water softening plants", "Sewage treatment plant", "Atmospheric water generator", "Heat pumps", "Solar Panels", "Rainwater Harvesting", "Modular Kitchen", "Automated Smart Homes", "Terrace", "Power Backup", "Powder Room", "Lift", "Garden", "Office", "Jacuzzi", "Home Theatre", "Yoga and Meditation Room", "Pet-Friendly Facilities", "Children’s Playground", "Library and Reading Room", "BBQ and Picnic Area", "Community Clubhouse", "Gym/Fitness Center", "24/7 Security", "Swimming Pool", "Heated Pool", "Automatic main door" ];
-const marketingMaterialOptions = ["Brochure", "Floor Plans", "3D Elevations", "Sample Flat Photos"];
+const marketingMaterialOptions = ["Brochure", "Floor Plans", "3D Elevations", "Sample Flat Photos", "Renders", "Virtual Tour"];
 const additionalActionsOptions = ["Legal Verification", "Site Visit", "Photography", "Video Walkthrough"];
 
 export function ListingForm({
@@ -227,6 +230,14 @@ export function ListingForm({
       }
     });
   };
+
+  const handlePdfImport = (importedData: Partial<ListingFormData>) => {
+    form.reset({
+      ...form.getValues(),
+      ...importedData,
+      listingId: '',
+    });
+  };
   
   const CheckboxGroup = ({ name, options }: { name: "amenities" | "taxesApplicable" | "marketingMaterials" | "additionalActions" | "usps", options: readonly string[] | string[] }) => (
     <FormField
@@ -303,8 +314,25 @@ export function ListingForm({
            </div>
         </DialogHeader>
         <ScrollArea className="max-h-[80vh] pr-6">
+        {!listing?.id && <ListingPdfImport onImported={handlePdfImport} />}
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <Card>
+                <CardHeader><CardTitle>Hero Image</CardTitle></CardHeader>
+                <CardContent>
+                  <FormField
+                    control={form.control}
+                    name="heroImageUrl"
+                    render={({ field }) => (
+                      <ListingHeroImageUpload
+                        value={field.value}
+                        onChange={field.onChange}
+                        listingLabel={form.getValues('listingId') || form.getValues('listingName')}
+                      />
+                    )}
+                  />
+                </CardContent>
+            </Card>
             <Card>
                 <CardHeader><CardTitle>Basic Information</CardTitle></CardHeader>
                 <CardContent className="space-y-4">

@@ -27,7 +27,8 @@ type WhatsAppRecipient = {
   id: string;
   name: string;
   phone: string;
-  type?: 'contact' | 'channelPartner';
+  type?: 'contact' | 'channelPartner' | 'quickShare';
+  messageName?: string;
 };
 
 interface WhatsAppDraftDialogProps {
@@ -50,8 +51,8 @@ export function WhatsAppDraftDialog({
   const normalizedPhone = normalizeWhatsAppPhone(recipient.phone);
 
   React.useEffect(() => {
-    if (isOpen) setMessage(generateWhatsAppDraft(recipient.name, listings));
-  }, [isOpen, listings, recipient.name]);
+    if (isOpen) setMessage(generateWhatsAppDraft(recipient.messageName || recipient.name, listings));
+  }, [isOpen, listings, recipient.messageName, recipient.name]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message);

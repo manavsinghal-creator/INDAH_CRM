@@ -187,7 +187,48 @@ function addDescription(doc: PdfDoc, listing: Listing, mode: PdfMode, startY: nu
   return (doc.lastAutoTable?.finalY || y) + 8;
 }
 
-export function exportInternalListingPdf(listing: Listing) {
+async function heroImageData(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function addHeroImage(doc: PdfDoc, listing: Listing, startY: number) {
+  const x = 14;
+  const width = 182;
+  const height = 58;
+  setRgb(doc, 'setFillColor', brand.paleGold);
+  doc.roundedRect(x, startY, width, height, 1.8, 1.8, 'F');
+
+  const imageData = listing.heroImageUrl ? await heroImageData(listing.heroImageUrl) : null;
+  if (imageData) {
+    try {
+      doc.addImage(imageData, x, startY, width, height);
+      return startY + height + 8;
+    } catch {
+      // Keep the polished fallback panel when the image format cannot be embedded.
+    }
+  }
+
+  setRgb(doc, 'setTextColor', brand.muted);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text('No hero image', x + width / 2, startY + height / 2, { align: 'center' });
+  setRgb(doc, 'setTextColor', brand.black);
+  return startY + height + 8;
+}
+
+export async function exportInternalListingPdf(listing: Listing) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' }) as PdfDoc;
   addHeader(doc, listing, 'internal');
 
@@ -202,7 +243,7 @@ export function exportInternalListingPdf(listing: Listing) {
   doc.text(`${listing.location || '-'} | ${listing.projectName || '-'}`, 14, 49);
   setRgb(doc, 'setTextColor', brand.black);
 
-  let y = 58;
+  let y = await addHeroImage(doc, listing, 56);
 
   y = addSection(doc, listing, 'internal', 'Quick Summary', sectionRows([
     ['Listing ID', listing.listingId || 'Not assigned'],
@@ -291,7 +332,7 @@ export function exportInternalListingPdf(listing: Listing) {
   doc.save(`${filenameForListing(listing, 'internal')}.pdf`);
 }
 
-export function exportExternalListingPdf(listing: Listing) {
+export async function exportExternalListingPdf(listing: Listing) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' }) as PdfDoc;
   addHeader(doc, listing, 'external');
 
@@ -306,7 +347,7 @@ export function exportExternalListingPdf(listing: Listing) {
   doc.text(`${listing.location || '-'} | ${listing.bhkConfiguration || '-'} | ${listing.propertyType || '-'}`, 14, 49);
   setRgb(doc, 'setTextColor', brand.black);
 
-  let y = 58;
+  let y = await addHeroImage(doc, listing, 56);
 
   y = addSection(doc, listing, 'external', 'Property Summary', sectionRows([
     ['Listing ID', listing.listingId || 'Not assigned'],
