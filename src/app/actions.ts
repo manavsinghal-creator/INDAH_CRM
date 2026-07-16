@@ -32,6 +32,7 @@ import { findContactDuplicates } from '@/lib/contact-duplicates';
 import { getContactLeadStage, getListingAvailability, isListingAvailable } from '@/lib/crm-status';
 import { clearMatchCache } from '@/lib/ai-match-cache';
 import { buildMarketResearchData } from '@/lib/market-research';
+import { buildBestMatches } from '@/lib/best-matches';
 
 const contactsCollection = collection(db, 'contacts');
 const listingsCollection = collection(db, 'listings');
@@ -1212,9 +1213,13 @@ export async function getMarketResearchData() {
 export async function getDashboardMetrics() {
     await requireAuthorizedUser();
     noStore();
-    const contacts = await getContacts();
-    const listings = await getListings();
-    const partners = await getChannelPartners();
+    const [contacts, listings, partners, activityLogs, siteVisits] = await Promise.all([
+        getContacts(),
+        getListings(),
+        getChannelPartners(),
+        getActivityLogs(),
+        getSiteVisits(),
+    ]);
 
     const buyers = contacts.filter(c => c.contactType === 'Buyer').length;
     const sellers = contacts.filter(c => c.contactType === 'Seller').length;
@@ -1281,6 +1286,21 @@ export async function getDashboardMetrics() {
         .filter(Boolean)
         .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || null;
 
+    const dashboardUsers = [...new Map(activityLogs
+        .filter((log) => log.userEmail)
+        .map((log) => [log.userEmail, { email: log.userEmail, name: log.userName || log.userEmail }]))
+        .values()]
+        .sort((first, second) => first.name.localeCompare(second.name));
+    const visitedContactIds = new Set(siteVisits.map((visit) => visit.contactId));
+    const newBuyerCount = contacts.filter((contact) => contact.contactType === 'Buyer' && getContactLeadStage(contact) === 'New').length;
+    const qualifiedWithoutListings = contacts.filter((contact) => contact.contactType === 'Buyer'
+        && getContactLeadStage(contact) === 'Qualified'
+        && !(contact.offeredListings || []).length).length;
+    const propertySharedAwaitingVisit = contacts.filter((contact) => contact.contactType === 'Buyer'
+        && getContactLeadStage(contact) === 'Property Shared'
+        && !visitedContactIds.has(contact.id)).length;
+    const bestMatchSummary = buildBestMatches(contacts, listings, siteVisits);
+
     return {
         success: true,
         data: {
@@ -1323,6 +1343,19 @@ export async function getDashboardMetrics() {
                 listingsWithoutDescription: listings.filter(listing => !listing.description).length,
                 listingsWithoutCarpetArea: listings.filter(listing => !listing.carpetArea).length,
                 zeroPriceListings: listings.filter(listing => !Number(listing.basePrice)).length,
+            },
+            activityLogs,
+            siteVisits,
+            dashboardUsers,
+            attention: {
+                newBuyerCount,
+                qualifiedWithoutListings,
+                propertySharedAwaitingVisit,
+                listingsWithoutHeroImage: listings.filter((listing) => !listing.heroImageUrl).length,
+            },
+            bestMatches: {
+                strongOpportunityCount: bestMatchSummary.strongOpportunityCount,
+                eligibleBuyerCount: bestMatchSummary.eligibleBuyerCount,
             },
             lastUpdatedAt: new Date().toISOString()
         }

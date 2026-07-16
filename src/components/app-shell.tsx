@@ -13,6 +13,7 @@ import type { SessionUser } from '@/lib/auth-server';
 const navItems = [
   { href: '/', label: 'Contacts' },
   { href: '/listings', label: 'Listings' },
+  { href: '/best-matches', label: 'Best Matches' },
   { href: '/partners', label: 'Channel Partners' },
   { href: '/metrics', label: 'Metrics' },
   { href: '/reports', label: 'Reports' },
